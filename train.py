@@ -62,46 +62,66 @@ def run(model, epochs=20):
         print(f"  Epoch {epoch+1:3d} | acc: {acc:.3f} | recon MSE: {mse:.4f}")
     return accs, mses
 
-# ── PsiNN model ───────────────────────────────────────────────────────────────
+# ── Run all epoch configs ──────────────────────────────────────────────────────
 n_channels, n_classes = 1, 2
-print("=== PsiNN (shared weights) ===")
-psinn        = AE_Classifier1d(n_channels=n_channels, n_classes=n_classes, nf=16, k=3)
-p_accs, p_mses = run(psinn)
+epoch_configs = [50, 100, 200, 300, 500, 1000]
+summary = []  # collect final results for comparison table
 
-# ── Baseline model ────────────────────────────────────────────────────────────
-print("\n=== Baseline (independent weights) ===")
-baseline         = AE_Baseline_Classifier1d(n_channels=n_channels, n_classes=n_classes, nf=16, k=3)
-b_accs, b_mses   = run(baseline)
+for n_epochs in epoch_configs:
+    print(f"\n{'='*50}")
+    print(f"  EPOCHS: {n_epochs}")
+    print(f"{'='*50}")
 
-# ── Summary ───────────────────────────────────────────────────────────────────
-print("\n─────────────────────────────────────────────")
-print(f"{'Model':<30} {'Acc':>6}  {'Recon MSE':>10}")
-print(f"{'─'*30} {'─'*6}  {'─'*10}")
-print(f"{'PsiNN (shared weights)':<30} {p_accs[-1]:>6.3f}  {p_mses[-1]:>10.4f}")
-print(f"{'Baseline (indep. weights)':<30} {b_accs[-1]:>6.3f}  {b_mses[-1]:>10.4f}")
-print("─────────────────────────────────────────────")
+    print("\n=== PsiNN (shared weights) ===")
+    psinn          = AE_Classifier1d(n_channels=n_channels, n_classes=n_classes, nf=16, k=3)
+    p_accs, p_mses = run(psinn, epochs=n_epochs)
 
-# ── Plots ─────────────────────────────────────────────────────────────────────
-epochs = range(1, len(p_accs) + 1)
+    print("\n=== Baseline (independent weights) ===")
+    baseline       = AE_Baseline_Classifier1d(n_channels=n_channels, n_classes=n_classes, nf=16, k=3)
+    b_accs, b_mses = run(baseline, epochs=n_epochs)
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    # ── Per-run summary ───────────────────────────────────────────────────────
+    print("\n─────────────────────────────────────────────")
+    print(f"{'Model':<30} {'Acc':>6}  {'Recon MSE':>10}")
+    print(f"{'─'*30} {'─'*6}  {'─'*10}")
+    print(f"{'PsiNN (shared weights)':<30} {p_accs[-1]:>6.3f}  {p_mses[-1]:>10.4f}")
+    print(f"{'Baseline (indep. weights)':<30} {b_accs[-1]:>6.3f}  {b_mses[-1]:>10.4f}")
+    print("─────────────────────────────────────────────")
+    summary.append((n_epochs, p_accs[-1], p_mses[-1], b_accs[-1], b_mses[-1]))
 
-ax1.plot(epochs, p_accs, label="PsiNN (shared weights)")
-ax1.plot(epochs, b_accs, label="Baseline (indep. weights)")
-ax1.set_xlabel("Epoch")
-ax1.set_ylabel("Accuracy")
-ax1.set_title("Classification Accuracy")
-ax1.legend()
-ax1.grid(True)
+    # ── Plots ─────────────────────────────────────────────────────────────────
+    ep = range(1, n_epochs + 1)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    fig.suptitle(f"ItalyPowerDemand — {n_epochs} Epochs", fontsize=13)
 
-ax2.plot(epochs, p_mses, label="PsiNN (shared weights)")
-ax2.plot(epochs, b_mses, label="Baseline (indep. weights)")
-ax2.set_xlabel("Epoch")
-ax2.set_ylabel("Reconstruction MSE")
-ax2.set_title("Reconstruction MSE")
-ax2.legend()
-ax2.grid(True)
+    ax1.plot(ep, p_accs, label="PsiNN (shared weights)")
+    ax1.plot(ep, b_accs, label="Baseline (indep. weights)")
+    ax1.set_xlabel("Epoch")
+    ax1.set_ylabel("Accuracy")
+    ax1.set_title("Classification Accuracy")
+    ax1.legend()
+    ax1.grid(True)
 
-plt.tight_layout()
-plt.savefig("results.png", dpi=150)
-print("Plots saved to results.png")
+    ax2.plot(ep, p_mses, label="PsiNN (shared weights)")
+    ax2.plot(ep, b_mses, label="Baseline (indep. weights)")
+    ax2.set_xlabel("Epoch")
+    ax2.set_ylabel("Reconstruction MSE")
+    ax2.set_title("Reconstruction MSE")
+    ax2.legend()
+    ax2.grid(True)
+
+    plt.tight_layout()
+    fname = f"results_{n_epochs}epochs.png"
+    plt.savefig(fname, dpi=150)
+    plt.close()
+    print(f"Plots saved to {fname}")
+
+# ── Final comparison table ─────────────────────────────────────────────────────
+print(f"\n{'='*65}")
+print(f"  FINAL RESULTS ACROSS ALL EPOCH CONFIGS")
+print(f"{'='*65}")
+print(f"{'Epochs':>8}  {'PsiNN Acc':>10}  {'PsiNN MSE':>10}  {'Base Acc':>10}  {'Base MSE':>10}")
+print(f"{'─'*8}  {'─'*10}  {'─'*10}  {'─'*10}  {'─'*10}")
+for n_epochs, p_acc, p_mse, b_acc, b_mse in summary:
+    print(f"{n_epochs:>8}  {p_acc:>10.3f}  {p_mse:>10.4f}  {b_acc:>10.3f}  {b_mse:>10.4f}")
+print(f"{'='*65}")
