@@ -69,6 +69,6 @@ plt.title('ROC Curve - Modulation-Agnostic Anomaly Detection')
 plt.legend()
 plt.grid()
 plt.savefig("spectrum_data/roc_comparison.png")
-plt.show()
+plt.close()
 
 print("✅ Results saved in spectrum_data/ (CSV, TXT, and PNG)")

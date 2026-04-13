@@ -1,0 +1,7 @@
+# Generated data files (too large for git)
+spectrum_data/*.pt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
