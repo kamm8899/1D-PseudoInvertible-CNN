@@ -27,6 +27,7 @@ def generate_iq_dataset(
     torch.manual_seed(42)
 
     # === TRAINING SET: Pure AWGN noise only ===
+    
     train_noise = torch.randn(num_train, 2, length, dtype=torch.float32)
     train_noise = (train_noise - train_noise.mean()) / train_noise.std()
 

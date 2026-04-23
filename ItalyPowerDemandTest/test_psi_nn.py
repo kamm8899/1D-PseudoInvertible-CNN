@@ -59,9 +59,11 @@ for step in range(10):
     clas = psi_model(x)
     recon = psi_model.AE(x)
     
-    loss_class = F.cross_entropy(clas, labels)
+
     loss_recon = F.mse_loss(recon, x)
-    loss = loss_class + 0.1 * loss_recon
+
+    #removed loss class
+    loss = loss_recon
     
     loss.backward()
     optimizer.step()
