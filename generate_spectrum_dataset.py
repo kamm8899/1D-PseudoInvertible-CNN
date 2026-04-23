@@ -35,6 +35,7 @@ def generate_iq_dataset(
     test_data = []
     test_labels = []   # 0 = pure noise, 1 = signal present (anomaly)
     test_snrs = []
+    test_mods = []
 
     modulations = ['qpsk', 'bpsk', '16qam', 'fm']
 
@@ -44,6 +45,7 @@ def generate_iq_dataset(
         if np.random.rand() < 0.5:  # 50% pure noise
             sample = torch.randn(2, length, dtype=torch.float32)
             label = 0
+            mod = 'none'
         else:
             t = torch.arange(length, dtype=torch.float32)
             mod = np.random.choice(modulations)
@@ -64,6 +66,7 @@ def generate_iq_dataset(
                 signal = torch.cos(2 * np.pi * freq * t + torch.cumsum(0.05 * freq, dim=0)) + 0j
 
             # Normalize signal and add controlled noise
+            #turn to vector
             signal = torch.stack([signal.real, signal.imag], dim=0).squeeze(1)
             signal = signal / torch.abs(signal).max()
             sample = add_awgn(signal, snr_db)
@@ -72,20 +75,22 @@ def generate_iq_dataset(
         # Normalize sample
         sample = (sample - sample.mean()) / sample.std()
         test_data.append(sample)
+        test_mods.append(mod)
         test_labels.append(label)
         test_snrs.append(snr_db)
 
     test_data = torch.stack(test_data)
     test_labels = torch.tensor(test_labels, dtype=torch.long)
+    test_mods = torch.tensor(test_mods)
     test_snrs = torch.tensor(test_snrs, dtype=torch.float32)
 
-    return train_noise, test_data, test_labels, test_snrs
+    return train_noise, test_data, test_labels, test_snrs, test_mods
 
 # ========================== MAIN ==========================
 if __name__ == "__main__":
     print("Generating spectrum-sensing dataset (Option 1 - Pure Python)...")
     
-    train_noise, test_data, test_labels, test_snrs = generate_iq_dataset()
+    train_noise, test_data, test_labels, test_snrs, test_mods  = generate_iq_dataset()
 
     # Create output folder
     Path("spectrum_data").mkdir(exist_ok=True)
@@ -96,9 +101,12 @@ if __name__ == "__main__":
         "data": test_data,
         "labels": test_labels,      # 0 = noise, 1 = anomaly
         "snrs": test_snrs
+        "signals": test_mods
     }, "spectrum_data/test_data.pt")
 
     print("✅ Dataset generation complete!")
     print(f"   Training samples : {train_noise.shape}  (pure noise only)")
     print(f"   Test samples     : {test_data.shape}  ({test_labels.sum().item()} anomalies)")
     print(f"   Files saved in   : ./spectrum_data/")
+
+    #perform on each four of the modulations 

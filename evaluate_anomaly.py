@@ -13,6 +13,7 @@ test_dict = torch.load("spectrum_data/test_data.pt")
 test_data = test_dict["data"]
 test_labels = test_dict["labels"].numpy()
 
+#need this in order to get gamma
 train_dict = torch.load("spectrum_data/train_noise.pt")
 train_noise = train_dict["data"]
 
@@ -50,6 +51,8 @@ sigma_beta = np.std(train_beta)
 print(f"Train noise β → mean = {mu_beta:.4f}, std = {sigma_beta:.4f}")
 
 # ====================== NEYMAN-PEARSON THRESHOLD γ ======================
+#pfa = probability of false alarm = P(β > γ | H0) = Q((γ - μ_β) / σ_β)
+#setting pfa to 1 percent, better youdan index to determine optimal pfa
 target_pfa = 0.01
 gamma = mu_beta - norm.ppf(target_pfa) * sigma_beta   # Eq. (7)
 print(f"Target P_fa = {target_pfa} → Threshold γ = {gamma:.4f}")
@@ -67,6 +70,7 @@ auc_base = auc(fpr_base, tpr_base)
 
 param_psi = sum(p.numel() for p in model_psi.parameters())
 param_base = sum(p.numel() for p in model_base.parameters())
+
 
 print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
 print(f"Psl-CNN AUC: {auc_psi:.4f}")
@@ -100,3 +104,15 @@ plt.savefig("spectrum_data/roc_comparison.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 print("✅ Evaluation complete! Results saved in spectrum_data/")
+
+#Things to do: 
+#target pfa == set 1#
+# Do I need to do this? #setting pfa to 1 percent, better youdan index to determine optimal pfa
+#how to use the ROC curve to get a better target pfa using the youdan index?
+
+# Signal to noise ratio SNR to accuracy -- for each of the mods
+
+#Ask professor --- Do I need to show anything on the accuracy for the epochs--do we need to show convergence 
+# do 50 Epochs 
+
+#Deep Learning -- Transformers Base Model , Autoencoder Decoder, ResNet, 
