@@ -81,7 +81,7 @@ def generate_iq_dataset(
 
     test_data = torch.stack(test_data)
     test_labels = torch.tensor(test_labels, dtype=torch.long)
-    test_mods = torch.tensor(test_mods)
+    # test_mods is a list of strings — keep as list, not tensor
     test_snrs = torch.tensor(test_snrs, dtype=torch.float32)
 
     return train_noise, test_data, test_labels, test_snrs, test_mods
@@ -100,7 +100,7 @@ if __name__ == "__main__":
     torch.save({
         "data": test_data,
         "labels": test_labels,      # 0 = noise, 1 = anomaly
-        "snrs": test_snrs
+        "snrs": test_snrs,
         "signals": test_mods
     }, "spectrum_data/test_data.pt")
 

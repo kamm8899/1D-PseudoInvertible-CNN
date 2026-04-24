@@ -1,0 +1,9 @@
+=== EVALUATION RESULTS (Pablos et al. Step 3.3 - β + Neyman-Pearson) ===
+Date: 2026-04-24 16:06:26
+
+Psl-CNN AUC: 0.2830
+Baseline AUC: 0.4197
+Psl-CNN  γ (P_fa=0.01): 0.7528
+Baseline γ (P_fa=0.01): 0.4364
+Psl-CNN parameters: 33,312
+Baseline parameters: 65,664

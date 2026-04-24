@@ -1,0 +1,7 @@
+EXPERIMENT SUMMARY - 30 / 50 / 100 EPOCHS
+Date: 2026-04-24 13:27
+
+Epochs   Psl-CNN Loss       Baseline Loss      Psl-CNN Params
+30       0.516594           0.610759           33,312
+50       0.500142           0.606890           33,312
+100      0.494774           0.605371           33,312

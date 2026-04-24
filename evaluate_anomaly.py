@@ -6,23 +6,24 @@ from pathlib import Path
 import time
 from scipy.stats import norm   # for Q^{-1}(P_fa)
 
+from psinn_layer_1d import AE_Classifier1d, AE_Baseline_Classifier1d
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ====================== LOAD DATA ======================
-test_dict = torch.load("spectrum_data/test_data.pt")
+test_dict = torch.load("spectrum_data/test_data.pt", weights_only=False)
 test_data = test_dict["data"]
 test_labels = test_dict["labels"].numpy()
 
 #need this in order to get gamma
-train_dict = torch.load("spectrum_data/train_noise.pt")
-train_noise = train_dict["data"]
+train_noise = torch.load("spectrum_data/train_noise.pt", weights_only=False)  # plain tensor
 
 # ====================== LOAD MODELS ======================
-model_psi = AE_Classifier1d(n_channels=2, n_classes=0, nf=16, k=3, use_dropout=True).to(device)
-model_base = AE_Baseline_Classifier1d(n_channels=2, n_classes=0, nf=16, k=3, use_dropout=True).to(device)
+model_psi = AE_Classifier1d(n_channels=2, n_classes=1, nf=16, k=3, use_dropout=True).to(device)
+model_base = AE_Baseline_Classifier1d(n_channels=2, n_classes=1, nf=16, k=3, use_dropout=True).to(device)
 
-model_psi.load_state_dict(torch.load("spectrum_data/psl_cnn_ae.pth"))
-model_base.load_state_dict(torch.load("spectrum_data/baseline_ae.pth"))
+model_psi.load_state_dict(torch.load("spectrum_data/psl_cnn_100epochs.pth", weights_only=False))
+model_base.load_state_dict(torch.load("spectrum_data/baseline_100epochs.pth", weights_only=False))
 model_psi.eval()
 model_base.eval()
 
@@ -44,18 +45,21 @@ def compute_beta(model, data):
 
 # ====================== TRAINING NOISE STATISTICS (H0) ======================
 print("Computing β on training noise (H0) for threshold estimation...")
-train_beta = compute_beta(model_psi, train_noise)
+train_beta_psi  = compute_beta(model_psi,  train_noise)
+train_beta_base = compute_beta(model_base, train_noise)
 
-mu_beta = np.mean(train_beta)
-sigma_beta = np.std(train_beta)
-print(f"Train noise β → mean = {mu_beta:.4f}, std = {sigma_beta:.4f}")
+mu_psi,  sigma_psi  = np.mean(train_beta_psi),  np.std(train_beta_psi)
+mu_base, sigma_base = np.mean(train_beta_base), np.std(train_beta_base)
+print(f"Psl-CNN  H0 β → mean = {mu_psi:.4f},  std = {sigma_psi:.4f}")
+print(f"Baseline H0 β → mean = {mu_base:.4f}, std = {sigma_base:.4f}")
 
 # ====================== NEYMAN-PEARSON THRESHOLD γ ======================
 #pfa = probability of false alarm = P(β > γ | H0) = Q((γ - μ_β) / σ_β)
 #setting pfa to 1 percent, better youdan index to determine optimal pfa
 target_pfa = 0.01
-gamma = mu_beta - norm.ppf(target_pfa) * sigma_beta   # Eq. (7)
-print(f"Target P_fa = {target_pfa} → Threshold γ = {gamma:.4f}")
+gamma_psi  = mu_psi  + norm.ppf(target_pfa) * sigma_psi   # Eq. (7)
+gamma_base = mu_base + norm.ppf(target_pfa) * sigma_base
+print(f"Target P_fa = {target_pfa} → γ Psl-CNN = {gamma_psi:.4f}, γ Baseline = {gamma_base:.4f}")
 
 # ====================== TEST SET EVALUATION ======================
 print("\nComputing β scores on test set...")
@@ -73,11 +77,8 @@ param_base = sum(p.numel() for p in model_base.parameters())
 
 
 print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN AUC: {auc_psi:.4f}")
-print(f"Baseline AUC: {auc_base:.4f}")
-print(f"Threshold γ (P_fa={target_pfa}): {gamma:.4f}")
-print(f"Psl-CNN parameters: {param_psi:,}")
-print(f"Baseline parameters: {param_base:,}")
+print(f"Psl-CNN  AUC: {auc_psi:.4f}  γ = {gamma_psi:.4f}  params = {param_psi:,}")
+print(f"Baseline AUC: {auc_base:.4f}  γ = {gamma_base:.4f}  params = {param_base:,}")
 
 # Save results
 Path("spectrum_data").mkdir(exist_ok=True)
@@ -86,7 +87,8 @@ with open("spectrum_data/evaluation_results.txt", "w") as f:
     f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
     f.write(f"Psl-CNN AUC: {auc_psi:.4f}\n")
     f.write(f"Baseline AUC: {auc_base:.4f}\n")
-    f.write(f"Threshold γ (P_fa={target_pfa}): {gamma:.4f}\n")
+    f.write(f"Psl-CNN  γ (P_fa={target_pfa}): {gamma_psi:.4f}\n")
+    f.write(f"Baseline γ (P_fa={target_pfa}): {gamma_base:.4f}\n")
     f.write(f"Psl-CNN parameters: {param_psi:,}\n")
     f.write(f"Baseline parameters: {param_base:,}\n")
 
