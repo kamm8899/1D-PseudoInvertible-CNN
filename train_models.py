@@ -74,7 +74,7 @@ for epochs in EPOCH_LIST:
 
     print(f"✅ Saved models for {epochs} epochs")
 
-# === COMBINED LOSS PLOT ===
+# Combined Loss Plot
 plt.figure(figsize=(10, 6))
 for epochs in EPOCH_LIST:
     plt.plot(all_psi_losses[epochs], label=f'Psl-CNN ({epochs} epochs)', linewidth=2)
