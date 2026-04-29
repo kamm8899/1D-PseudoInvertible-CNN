@@ -87,7 +87,10 @@ print(f"Psl-CNN  AUC: {auc_psi:.4f}  γ = {gamma_psi:.4f}  params = {param_psi:,
 print(f"Baseline AUC: {auc_base:.4f}  γ = {gamma_base:.4f}  params = {param_base:,}")
 
 # Save results
-Path("spectrum_data").mkdir(exist_ok=True)
+out_dir = Path("anomalies_PSi-NN_forward")
+out_dir.mkdir(exist_ok=True)
+for f in out_dir.glob("*.png"):
+    f.unlink()
 with open("spectrum_data/evaluation_results.txt", "w") as f:
     f.write("=== EVALUATION RESULTS (Pablos et al. Step 3.3 - β + Neyman-Pearson) ===\n")
     f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
@@ -108,7 +111,7 @@ plt.ylabel('True Positive Rate')
 plt.title('ROC Curve - Modulation-Agnostic Anomaly Detection (β statistic)')
 plt.legend()
 plt.grid(True)
-plt.savefig("spectrum_data/roc_comparison.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_PSi-NN_forward/roc_comparison.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 print("✅ Evaluation complete! Results saved in spectrum_data/")
@@ -221,7 +224,7 @@ plt.ylabel('Frequency')
 plt.title('Distribution of β Scores - Psl-CNN')
 plt.legend()
 plt.grid(True)
-plt.savefig("anomalies_Psi-NN_forward/beta_distribution_psl_cnn_forwardPsi-nn.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_PSi-NN_forward/beta_distribution_psl_cnn_forwardPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 #MSE Signal Vs MSE Noise Plot
@@ -235,7 +238,7 @@ plt.ylabel('Frequency')
 plt.title('Distribution of MSE Scores - Psl-CNN')
 plt.legend()
 plt.grid(True)
-plt.savefig("anomalies_Psi-NN_forward/mse_distribution_forwardPsi-nn.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_PSi-NN_forward/mse_distribution_forwardPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 #Baseline Beta Signal Vs Baseline Beta Noise Plot
@@ -248,7 +251,7 @@ plt.ylabel('Frequency')
 plt.title('Distribution of β Scores - Baseline')
 plt.legend()
 plt.grid(True)
-plt.savefig("anomalies_Psi-NN_forward/beta_distribution_baseline_forwardPsi-nn.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_PSi-NN_forward/beta_distribution_baseline_forwardPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 #Baseline MSE Signal Vs Baseline MSE Noise Plot
@@ -262,5 +265,5 @@ plt.ylabel('Frequency')
 plt.title('Distribution of MSE Scores - Baseline')
 plt.legend()
 plt.grid(True)
-plt.savefig("anomalies_Psi-NN_forward/mse_distribution_baseline_forwardPsi-nn.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_PSi-NN_forward/mse_distribution_baseline_forwardPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close() 
