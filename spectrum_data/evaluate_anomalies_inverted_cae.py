@@ -63,7 +63,8 @@ print(f"CAE H0 β → mean = {mu_e:.4f},  std = {sigma_e:.4f}")
 
 # ====================== NEYMAN-PEARSON THRESHOLD γ ======================
 target_pfa = 0.01
-gamma = mu_e + norm.ppf(1 - target_pfa) * sigma_e
+# gamma = mu_e + norm.ppf(1 - target_pfa) * sigma_e  # upper-tail (inverted)
+gamma = mu_e - norm.ppf(1 - target_pfa) * sigma_e   # lower-tail: P(β < γ | H0) = P_fa
 print(f"Target P_fa = {target_pfa} → γ = {gamma:.4f}")
 
 # ====================== TEST SET EVALUATION ======================
@@ -71,7 +72,8 @@ print("\nComputing β scores on test set...")
 beta_cae = compute_beta(model_cae, test_data)
 
 # ROC / AUC (higher β = anomaly — model reconstructs signals better than noise)
-fpr_cae, tpr_cae, thresholds_cae = roc_curve(test_labels, beta_cae)
+# fpr_cae, tpr_cae, thresholds_cae = roc_curve(test_labels, beta_cae)   # inverted score
+fpr_cae, tpr_cae, thresholds_cae = roc_curve(test_labels, -beta_cae)
 auc_cae = auc(fpr_cae, tpr_cae)
 
 # Youden Index
@@ -124,7 +126,8 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
     mask = (test_snr >= snr_low) & (test_snr < snr_high)
     if mask.sum() == 0:
         continue
-    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
+    # fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])   # inverted score
+    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     label = f"[{snr_low:+d}, {snr_high:+d}) dB"
@@ -141,7 +144,8 @@ for mod in ['qpsk', 'bpsk', '16qam', 'fm']:
     mask = (test_mods == mod) | (test_labels == 0)
     if mask.sum() == 0:
         continue
-    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
+    # fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])   # inverted score
+    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     print(f"{mod:<16} {'CAE Inv':<12} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
@@ -149,7 +153,8 @@ for mod in ['qpsk', 'bpsk', '16qam', 'fm']:
 
 # TPR for P_fa = 0.05
 target_pfa = 0.05
-gamma = mu_e + norm.ppf(1 - target_pfa) * sigma_e
+# gamma = mu_e + norm.ppf(1 - target_pfa) * sigma_e  # upper-tail (inverted)
+gamma = mu_e - norm.ppf(1 - target_pfa) * sigma_e   # lower-tail: P(β < γ | H0) = P_fa
 print(f"\nTarget P_fa = {target_pfa} → γ = {gamma:.4f}")
 
 print(f"\n{'='*60}")
@@ -161,7 +166,8 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
     mask = (test_snr >= snr_low) & (test_snr < snr_high)
     if mask.sum() == 0:
         continue
-    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
+    # fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])   # inverted score
+    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     label = f"[{snr_low:+d}, {snr_high:+d}) dB"
@@ -177,7 +183,8 @@ for mod in ['qpsk', 'bpsk', '16qam', 'fm']:
     mask = (test_mods == mod) | (test_labels == 0)
     if mask.sum() == 0:
         continue
-    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
+    # fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])   # inverted score
+    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     print(f"{mod:<16} {'CAE Inv':<12} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")

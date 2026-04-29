@@ -13,6 +13,7 @@ Output: (N, 1, 1024) — reconstructed signal
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class CAE(nn.Module):
@@ -64,7 +65,10 @@ class CAE(nn.Module):
         return self.decoder(z)
 
     def forward(self, x):
-        return self.decode(self.encode(x))
+        out = self.decode(self.encode(x))
+        if out.shape[-1] != x.shape[-1]:
+            out = F.interpolate(out, size=x.shape[-1], mode='linear', align_corners=False)
+        return out
 
 
 # ── Training ──────────────────────────────────────────────────────────────────
