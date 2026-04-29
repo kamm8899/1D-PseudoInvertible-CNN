@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import torch
 import numpy as np
 from sklearn.metrics import roc_curve, auc
@@ -19,7 +15,7 @@ test_dict = torch.load("spectrum_data/test_data.pt", weights_only=False)
 test_data = test_dict["data"]
 test_labels = test_dict["labels"].numpy()
 test_snr = test_dict["snrs"].numpy()
-test_mods = test_dict["signals"]  # list of modulation types (strings)
+test_mods = np.array(test_dict["signals"])  # convert to array so boolean indexing works
 
 #need this in order to get gamma
 train_noise = torch.load("spectrum_data/train_noise.pt", weights_only=False)  # plain tensor
@@ -60,8 +56,6 @@ print(f"Psl-CNN  H0 β → mean = {mu_psi:.4f},  std = {sigma_psi:.4f}")
 print(f"Baseline H0 β → mean = {mu_base:.4f}, std = {sigma_base:.4f}")
 
 # ====================== NEYMAN-PEARSON THRESHOLD γ ======================
-#pfa = probability of false alarm = P(β > γ | H0) = Q((γ - μ_β) / σ_β)
-#setting pfa to 1 percent, better youdan index to determine optimal pfa
 target_pfa = 0.01
 gamma_psi  = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi   # upper tail: β > γ → anomaly
 gamma_base = mu_base + norm.ppf(1 - target_pfa) * sigma_base
@@ -79,17 +73,16 @@ auc_psi  = auc(fpr_psi,  tpr_psi)
 auc_base = auc(fpr_base, tpr_base)
 
 # Youden Index: optimal point on ROC = max(TPR - FPR)
-# This gives the best trade-off between sensitivity and specificity
-#youden_psi  = tpr_psi  - fpr_psi
-#youden_base = tpr_base - fpr_base
+youden_psi  = tpr_psi  - fpr_psi
+youden_base = tpr_base - fpr_base
 
-#best_idx_psi  = np.argmax(youden_psi)
-#best_idx_base = np.argmax(youden_base)
+best_idx_psi  = np.argmax(youden_psi)
+best_idx_base = np.argmax(youden_base)
 
-#optimal_pfa_psi  = fpr_psi[best_idx_psi]   # FPR at optimal point = Pfa
-#optimal_pfa_base = fpr_base[best_idx_base]
-#optimal_tpr_psi  = tpr_psi[best_idx_psi]
-#optimal_tpr_base = tpr_base[best_idx_base]
+optimal_pfa_psi  = fpr_psi[best_idx_psi]
+optimal_pfa_base = fpr_base[best_idx_base]
+optimal_tpr_psi  = tpr_psi[best_idx_psi]
+optimal_tpr_base = tpr_base[best_idx_base]
 
 param_psi  = sum(p.numel() for p in model_psi.parameters())
 param_base = sum(p.numel() for p in model_base.parameters())
@@ -102,7 +95,11 @@ print(f"Psl-CNN  optimal Pfa = {optimal_pfa_psi:.4f}  TPR = {optimal_tpr_psi:.4f
 print(f"Baseline optimal Pfa = {optimal_pfa_base:.4f}  TPR = {optimal_tpr_base:.4f}  Youden = {youden_base[best_idx_base]:.4f}")
 
 # Save results
-Path("spectrum_data").mkdir(exist_ok=True)
+out_dir = Path("anomalies_Psi-NN_inverted")
+out_dir.mkdir(exist_ok=True)
+for f in out_dir.glob("*.png"):
+    f.unlink()
+
 with open("spectrum_data/evaluation_results.txt", "w") as f:
     f.write("=== EVALUATION RESULTS (Pablos et al. Step 3.3 - β + Neyman-Pearson) ===\n")
     f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
@@ -117,7 +114,7 @@ with open("spectrum_data/evaluation_results.txt", "w") as f:
 plt.figure(figsize=(8,6))
 plt.plot(fpr_psi,  tpr_psi,  label=f'1D Psl-CNN (AUC = {auc_psi:.3f})')
 plt.plot(fpr_base, tpr_base, label=f'Baseline  (AUC = {auc_base:.3f})')
-plt.scatter(optimal_pfa_psi,  optimal_tpr_psi,  marker='*', s=200, color='blue',  zorder=5, label=f'Psl-CNN  Youden (Pfa={optimal_pfa_psi:.3f})')
+plt.scatter(optimal_pfa_psi,  optimal_tpr_psi,  marker='*', s=200, color='blue',   zorder=5, label=f'Psl-CNN  Youden (Pfa={optimal_pfa_psi:.3f})')
 plt.scatter(optimal_pfa_base, optimal_tpr_base, marker='*', s=200, color='orange', zorder=5, label=f'Baseline Youden (Pfa={optimal_pfa_base:.3f})')
 plt.plot([0,1], [0,1], 'k--')
 plt.xlabel('False Positive Rate')
@@ -125,176 +122,108 @@ plt.ylabel('True Positive Rate')
 plt.title('ROC Curve - Modulation-Agnostic Anomaly Detection (β statistic)')
 plt.legend()
 plt.grid(True)
-plt.savefig("spectrum_data/roc_comparison.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_Psi-NN_inverted/roc_comparison.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 print("✅ Evaluation complete! Results saved in spectrum_data/")
 
-#Things to do: 
-#target pfa == set 1#
-# Do I need to do this? #setting pfa to 1 percent, better youdan index to determine optimal pfa
-#how to use the ROC curve to get a better target pfa using the youdan index?
+# TPR by SNR range (P_fa = 0.01)
+print(f"\n{'='*70}")
+print(f"TPR BY SNR RANGE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
+print(f"{'SNR Range':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
+print(f"{'─'*70}")
 
-# Signal to noise ratio SNR to accuracy -- for each of the mods
+for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
+    mask = (test_snr >= snr_low) & (test_snr < snr_high)
+    if mask.sum() == 0:
+        continue
+    fpr_p, tpr_p, _ = roc_curve(test_labels[mask], beta_psi[mask])
+    fpr_b, tpr_b, _ = roc_curve(test_labels[mask], beta_base[mask])
+    auc_p = auc(fpr_p, tpr_p)
+    auc_b = auc(fpr_b, tpr_b)
+    tpr_p_at_g = tpr_p[np.searchsorted(fpr_p, target_pfa, side='right') - 1]
+    tpr_b_at_g = tpr_b[np.searchsorted(fpr_b, target_pfa, side='right') - 1]
+    label = f"[{snr_low:+d}, {snr_high:+d}) dB"
+    print(f"{label:<16} {'Psl-CNN':<12} {auc_p:>6.4f}  {tpr_p_at_g:>8.4f}")
+    print(f"{'':16} {'Baseline':<12} {auc_b:>6.4f}  {tpr_b_at_g:>8.4f}")
+    print(f"{'─'*70}")
 
-#Ask professor --- Do I need to show anything on the accuracy for the epochs--do we need to show convergence 
-# do 50 Epochs 
+# TPR by modulation type (P_fa = 0.01)
+print(f"\n{'='*70}")
+print(f"TPR BY MODULATION TYPE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
+print(f"{'Modulation':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
+print(f"{'─'*70}")
 
-#Deep Learning -- Transformers Base Model , Autoencoder Decoder, ResNet, 
+for mod in ['qpsk', 'bpsk', '16qam', 'fm']:
+    # include all noise samples so both classes (H0 and H1) are present for ROC
+    mask = (test_mods == mod) | (test_labels == 0)
+    if mask.sum() == 0:
+        continue
+    fpr_p, tpr_p, _ = roc_curve(test_labels[mask], beta_psi[mask])
+    fpr_b, tpr_b, _ = roc_curve(test_labels[mask], beta_base[mask])
+    auc_p = auc(fpr_p, tpr_p)
+    auc_b = auc(fpr_b, tpr_b)
+    tpr_p_at_g = tpr_p[np.searchsorted(fpr_p, target_pfa, side='right') - 1]
+    tpr_b_at_g = tpr_b[np.searchsorted(fpr_b, target_pfa, side='right') - 1]
+    print(f"{mod:<16} {'Psl-CNN':<12} {auc_p:>6.4f}  {tpr_p_at_g:>8.4f}")
+    print(f"{'':16} {'Baseline':<12} {auc_b:>6.4f}  {tpr_b_at_g:>8.4f}")
+    print(f"{'─'*70}")
 
-#TPR Based of SNR
-# ROC / AUC (higher β = anomaly — model reconstructs signals better than noise)
-mask= (test_snr >= -10) & (test_snr <= -5)
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
-
-mask= (test_snr >= -5) & (test_snr <= -0)
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
-
-mask= (test_snr >= 0) & (test_snr <= 5)
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
-
-mask= (test_snr >= 5) & (test_snr <= 10)
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
-
-#Modulation Type TPR breakdown 
-
-mask= test_mods == 'qpsk'
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
-
-
-mask= test_mods == 'bpsk'
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
-
-mask= test_mods == '16qam'
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
-
-mask= test_mods == 'fm'
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
-
-mask= test_mods == 'none'
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
-
-##Maybe make a plot at some point add for loop to make easier 
-
-#TPR for .05 pfa
-#change print statements to add SNR range
+# TPR for P_fa = 0.05
 target_pfa = 0.05
-gamma_psi  = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi   # upper tail: β > γ → anomaly
+gamma_psi  = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi
 gamma_base = mu_base + norm.ppf(1 - target_pfa) * sigma_base
 print(f"Target P_fa = {target_pfa} → γ Psl-CNN = {gamma_psi:.4f}, γ Baseline = {gamma_base:.4f}")
 
-print("\nComputing β scores on test set...")
-beta_psi = compute_beta(model_psi, test_data)
-beta_base = compute_beta(model_base, test_data)
+# TPR by SNR range (P_fa = 0.05)
+print(f"\n{'='*70}")
+print(f"TPR BY SNR RANGE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
+print(f"{'SNR Range':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
+print(f"{'─'*70}")
 
-mask= (test_snr >= -10) & (test_snr <= -5)
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
+for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
+    mask = (test_snr >= snr_low) & (test_snr < snr_high)
+    if mask.sum() == 0:
+        continue
+    fpr_p, tpr_p, _ = roc_curve(test_labels[mask], beta_psi[mask])
+    fpr_b, tpr_b, _ = roc_curve(test_labels[mask], beta_base[mask])
+    auc_p = auc(fpr_p, tpr_p)
+    auc_b = auc(fpr_b, tpr_b)
+    tpr_p_at_g = tpr_p[np.searchsorted(fpr_p, target_pfa, side='right') - 1]
+    tpr_b_at_g = tpr_b[np.searchsorted(fpr_b, target_pfa, side='right') - 1]
+    label = f"[{snr_low:+d}, {snr_high:+d}) dB"
+    print(f"{label:<16} {'Psl-CNN':<12} {auc_p:>6.4f}  {tpr_p_at_g:>8.4f}")
+    print(f"{'':16} {'Baseline':<12} {auc_b:>6.4f}  {tpr_b_at_g:>8.4f}")
+    print(f"{'─'*70}")
 
-mask= (test_snr >= -5) & (test_snr <= -0)
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
+# TPR by modulation type (P_fa = 0.05)
+print(f"\n{'='*70}")
+print(f"TPR BY MODULATION TYPE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
+print(f"{'Modulation':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
+print(f"{'─'*70}")
 
-mask= (test_snr >= 0) & (test_snr <= 5)
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
+for mod in ['qpsk', 'bpsk', '16qam', 'fm']:
+    # include all noise samples so both classes (H0 and H1) are present for ROC
+    mask = (test_mods == mod) | (test_labels == 0)
+    if mask.sum() == 0:
+        continue
+    fpr_p, tpr_p, _ = roc_curve(test_labels[mask], beta_psi[mask])
+    fpr_b, tpr_b, _ = roc_curve(test_labels[mask], beta_base[mask])
+    auc_p = auc(fpr_p, tpr_p)
+    auc_b = auc(fpr_b, tpr_b)
+    tpr_p_at_g = tpr_p[np.searchsorted(fpr_p, target_pfa, side='right') - 1]
+    tpr_b_at_g = tpr_b[np.searchsorted(fpr_b, target_pfa, side='right') - 1]
+    print(f"{mod:<16} {'Psl-CNN':<12} {auc_p:>6.4f}  {tpr_p_at_g:>8.4f}")
+    print(f"{'':16} {'Baseline':<12} {auc_b:>6.4f}  {tpr_b_at_g:>8.4f}")
+    print(f"{'─'*70}")
 
-mask= (test_snr >= 5) & (test_snr <= 10)
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
+#============================ PLOTS ======================
 
-mask= test_mods == 'bpsk'
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
-
-mask= test_mods == '16qam'
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
-
-mask= test_mods == 'fm'
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
-
-mask= test_mods == 'none'
-fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
-auc_psi  = auc(fpr_psi,  tpr_psi)
-auc_base = auc(fpr_base, tpr_base)
-print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
+for (name, beta, gamma, color, fname) in [
+    ("Psl-CNN",  beta_psi,  gamma_psi,  "red",    "psl_cnn"),
+    ("Baseline", beta_base, gamma_base, "orange", "baseline"),
+]:
+    mse = 1 - beta
 
 #Beta Signal Vs Beta Noise Plot
 plt.figure(figsize=(8,6))
@@ -306,7 +235,7 @@ plt.ylabel('Frequency')
 plt.title('Distribution of β Scores - Psl-CNN')
 plt.legend()
 plt.grid(True)
-plt.savefig("spectrum_data/beta_distribution_psl_cnn.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_Psi-NN_inverted/beta_distribution_psl_cnn_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 #MSE Signal Vs MSE Noise Plot
@@ -320,7 +249,7 @@ plt.ylabel('Frequency')
 plt.title('Distribution of MSE Scores - Psl-CNN')
 plt.legend()
 plt.grid(True)
-plt.savefig("spectrum_data/mse_distribution_psl_cnn.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_Psi-NN_inverted/mse_distribution_psl_cnn_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 #Baseline Beta Signal Vs Baseline Beta Noise Plot
@@ -333,7 +262,7 @@ plt.ylabel('Frequency')
 plt.title('Distribution of β Scores - Baseline')
 plt.legend()
 plt.grid(True)
-plt.savefig("spectrum_data/beta_distribution_baseline.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_Psi-NN_inverted/beta_distribution_baseline_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 #Baseline MSE Signal Vs Baseline MSE Noise Plot
@@ -347,6 +276,6 @@ plt.ylabel('Frequency')
 plt.title('Distribution of MSE Scores - Baseline')
 plt.legend()
 plt.grid(True)
-plt.savefig("spectrum_data/mse_distribution_baseline.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_Psi-NN_inverted/mse_distribution_baseline_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close() 
 

@@ -1,5 +1,5 @@
 === EVALUATION RESULTS (Pablos et al. Step 3.3 - β + Neyman-Pearson) ===
-Date: 2026-04-29 11:50:29
+Date: 2026-04-29 11:55:53
 
 Psl-CNN AUC: 0.2830
 Baseline AUC: 0.4197
