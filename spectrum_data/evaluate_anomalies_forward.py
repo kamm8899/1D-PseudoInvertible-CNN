@@ -1,0 +1,107 @@
+import numpy as np\
+from sklearn.metrics import roc_curve, auc\
+import matplotlib.pyplot as plt\
+from pathlib import Path\
+import time\
+from scipy.stats import norm   # for Q^\{-1\}(P_fa)\
+\
+from psinn_layer_1d import AE_Classifier1d, AE_Baseline_Classifier1d\
+\
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")\
+\
+# ====================== LOAD DATA ======================\
+test_dict = torch.load("spectrum_data/test_data.pt", weights_only=False)\
+test_data = test_dict["data"]\
+test_labels = test_dict["labels"].numpy()\
+\
+#need this in order to get gamma\
+train_noise = torch.load("spectrum_data/train_noise.pt", weights_only=False)  # plain tensor\
+\
+# ====================== LOAD MODELS ======================\
+model_psi = AE_Classifier1d(n_channels=2, n_classes=1, nf=16, k=3, use_dropout=True).to(device)\
+model_base = AE_Baseline_Classifier1d(n_channels=2, n_classes=1, nf=16, k=3, use_dropout=True).to(device)\
+\
+model_psi.load_state_dict(torch.load("spectrum_data/psl_cnn_100epochs.pth", weights_only=False))\
+model_base.load_state_dict(torch.load("spectrum_data/baseline_100epochs.pth", weights_only=False))\
+model_psi.eval()\
+model_base.eval()\
+\
+def compute_beta(model, data):\
+    """Compute \uc0\u946  (Coefficient of Determination) per sample - Eq. (5) in Pablos et al."""\
+    betas = []\
+    with torch.no_grad():\
+        for i in range(0, len(data), 128):\
+            batch = data[i:i+128].to(device)                    # (B, 2, 1024)\
+            recon = model.AE(batch)\
+\
+            sse = torch.sum((batch - recon)**2, dim=[1, 2])\
+            mean_x = torch.mean(batch, dim=[1, 2], keepdim=True)\
+            sst = torch.sum((batch - mean_x)**2, dim=[1, 2])\
+\
+            beta = 1.0 - (sse / (sst + 1e-8))                   # avoid div-by-zero\
+            betas.append(beta.cpu())\
+    return torch.cat(betas).numpy()\
+\
+# ====================== TRAINING NOISE STATISTICS (H0) ======================\
+print("Computing \uc0\u946  on training noise (H0) for threshold estimation...")\
+train_beta_psi  = compute_beta(model_psi,  train_noise)\
+train_beta_base = compute_beta(model_base, train_noise)\
+\
+mu_psi,  sigma_psi  = np.mean(train_beta_psi),  np.std(train_beta_psi)\
+mu_base, sigma_base = np.mean(train_beta_base), np.std(train_beta_base)\
+print(f"Psl-CNN  H0 \uc0\u946  \u8594  mean = \{mu_psi:.4f\},  std = \{sigma_psi:.4f\}")\
+print(f"Baseline H0 \uc0\u946  \u8594  mean = \{mu_base:.4f\}, std = \{sigma_base:.4f\}")\
+\
+# ====================== NEYMAN-PEARSON THRESHOLD \uc0\u947  ======================\
+#pfa = probability of false alarm = P(\uc0\u946  > \u947  | H0) = Q((\u947  - \u956 _\u946 ) / \u963 _\u946 )\
+#setting pfa to 1 percent, better youdan index to determine optimal pfa\
+target_pfa = 0.01\
+gamma_psi  = mu_psi  + norm.ppf(target_pfa) * sigma_psi   # Eq. (7)\
+gamma_base = mu_base + norm.ppf(target_pfa) * sigma_base\
+print(f"Target P_fa = \{target_pfa\} \uc0\u8594  \u947  Psl-CNN = \{gamma_psi:.4f\}, \u947  Baseline = \{gamma_base:.4f\}")\
+\
+# ====================== TEST SET EVALUATION ======================\
+print("\\nComputing \uc0\u946  scores on test set...")\
+beta_psi = compute_beta(model_psi, test_data)\
+beta_base = compute_beta(model_base, test_data)\
+\
+# ROC / AUC (lower \uc0\u946  = anomaly \u8594  negate)\
+fpr_psi, tpr_psi, _ = roc_curve(test_labels, -beta_psi)\
+fpr_base, tpr_base, _ = roc_curve(test_labels, -beta_base)\
+auc_psi = auc(fpr_psi, tpr_psi)\
+auc_base = auc(fpr_base, tpr_base)\
+\
+param_psi = sum(p.numel() for p in model_psi.parameters())\
+param_base = sum(p.numel() for p in model_base.parameters())\
+\
+\
+print(f"\\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")\
+print(f"Psl-CNN  AUC: \{auc_psi:.4f\}  \uc0\u947  = \{gamma_psi:.4f\}  params = \{param_psi:,\}")\
+print(f"Baseline AUC: \{auc_base:.4f\}  \uc0\u947  = \{gamma_base:.4f\}  params = \{param_base:,\}")\
+\
+# Save results\
+Path("spectrum_data").mkdir(exist_ok=True)\
+with open("spectrum_data/evaluation_results.txt", "w") as f:\
+    f.write("=== EVALUATION RESULTS (Pablos et al. Step 3.3 - \uc0\u946  + Neyman-Pearson) ===\\n")\
+    f.write(f"Date: \{time.strftime('%Y-%m-%d %H:%M:%S')\}\\n\\n")\
+    f.write(f"Psl-CNN AUC: \{auc_psi:.4f\}\\n")\
+    f.write(f"Baseline AUC: \{auc_base:.4f\}\\n")\
+    f.write(f"Psl-CNN  \uc0\u947  (P_fa=\{target_pfa\}): \{gamma_psi:.4f\}\\n")\
+    f.write(f"Baseline \uc0\u947  (P_fa=\{target_pfa\}): \{gamma_base:.4f\}\\n")\
+    f.write(f"Psl-CNN parameters: \{param_psi:,\}\\n")\
+    f.write(f"Baseline parameters: \{param_base:,\}\\n")\
+\
+# ROC plot\
+plt.figure(figsize=(8,6))\
+plt.plot(fpr_psi, tpr_psi, label=f'1D Psl-CNN (AUC = \{auc_psi:.3f\})')\
+plt.plot(fpr_base, tpr_base, label=f'Baseline (AUC = \{auc_base:.3f\})')\
+plt.plot([0,1], [0,1], 'k--')\
+plt.xlabel('False Positive Rate')\
+plt.ylabel('True Positive Rate')\
+plt.title('ROC Curve - Modulation-Agnostic Anomaly Detection (\uc0\u946  statistic)')\
+plt.legend()\
+plt.grid(True)\
+plt.savefig("spectrum_data/roc_comparison.png", dpi=300, bbox_inches='tight')\
+plt.close()\
+\
+print("\uc0\u9989  Evaluation complete! Results saved in spectrum_data/")}

@@ -26,12 +26,12 @@ def generate_iq_dataset(
     np.random.seed(42)
     torch.manual_seed(42)
 
-    # === TRAINING SET: Pure AWGN noise only ===
+    # Training Set
     
     train_noise = torch.randn(num_train, 2, length, dtype=torch.float32)
     train_noise = (train_noise - train_noise.mean()) / train_noise.std()
 
-    # === TEST SET: Noise + various modulations (modulation-agnostic) ===
+    # TEST SET 
     test_data = []
     test_labels = []   # 0 = pure noise, 1 = signal present (anomaly)
     test_snrs = []
@@ -86,7 +86,7 @@ def generate_iq_dataset(
 
     return train_noise, test_data, test_labels, test_snrs, test_mods
 
-# ========================== MAIN ==========================
+# Main function to generate and save dataset
 if __name__ == "__main__":
     print("Generating spectrum-sensing dataset (Option 1 - Pure Python)...")
     

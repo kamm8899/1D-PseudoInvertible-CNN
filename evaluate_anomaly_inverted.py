@@ -22,8 +22,8 @@ train_noise = torch.load("spectrum_data/train_noise.pt", weights_only=False)  # 
 model_psi = AE_Classifier1d(n_channels=2, n_classes=1, nf=16, k=3, use_dropout=True).to(device)
 model_base = AE_Baseline_Classifier1d(n_channels=2, n_classes=1, nf=16, k=3, use_dropout=True).to(device)
 
-model_psi.load_state_dict(torch.load("spectrum_data/psl_cnn_100epochs.pth", weights_only=False))
-model_base.load_state_dict(torch.load("spectrum_data/baseline_100epochs.pth", weights_only=False))
+model_psi.load_state_dict(torch.load("spectrum_data/psl_cnn_200epochs.pth", weights_only=False))
+model_base.load_state_dict(torch.load("spectrum_data/baseline_200epochs.pth", weights_only=False))
 model_psi.eval()
 model_base.eval()
 
@@ -57,8 +57,8 @@ print(f"Baseline H0 β → mean = {mu_base:.4f}, std = {sigma_base:.4f}")
 #pfa = probability of false alarm = P(β > γ | H0) = Q((γ - μ_β) / σ_β)
 #setting pfa to 1 percent, better youdan index to determine optimal pfa
 target_pfa = 0.01
-gamma_psi  = mu_psi  + norm.ppf(target_pfa) * sigma_psi   # Eq. (7)
-gamma_base = mu_base + norm.ppf(target_pfa) * sigma_base
+gamma_psi  = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi   # upper tail: β > γ → anomaly
+gamma_base = mu_base + norm.ppf(1 - target_pfa) * sigma_base
 print(f"Target P_fa = {target_pfa} → γ Psl-CNN = {gamma_psi:.4f}, γ Baseline = {gamma_base:.4f}")
 
 # ====================== TEST SET EVALUATION ======================
@@ -66,19 +66,34 @@ print("\nComputing β scores on test set...")
 beta_psi = compute_beta(model_psi, test_data)
 beta_base = compute_beta(model_base, test_data)
 
-# ROC / AUC (lower β = anomaly → negate)
-fpr_psi, tpr_psi, _ = roc_curve(test_labels, -beta_psi)
-fpr_base, tpr_base, _ = roc_curve(test_labels, -beta_base)
-auc_psi = auc(fpr_psi, tpr_psi)
+# ROC / AUC (higher β = anomaly — model reconstructs signals better than noise)
+fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels, beta_psi)
+fpr_base, tpr_base, thresholds_base = roc_curve(test_labels, beta_base)
+auc_psi  = auc(fpr_psi,  tpr_psi)
 auc_base = auc(fpr_base, tpr_base)
 
-param_psi = sum(p.numel() for p in model_psi.parameters())
-param_base = sum(p.numel() for p in model_base.parameters())
+# Youden Index: optimal point on ROC = max(TPR - FPR)
+# This gives the best trade-off between sensitivity and specificity
+youden_psi  = tpr_psi  - fpr_psi
+youden_base = tpr_base - fpr_base
 
+best_idx_psi  = np.argmax(youden_psi)
+best_idx_base = np.argmax(youden_base)
+
+optimal_pfa_psi  = fpr_psi[best_idx_psi]   # FPR at optimal point = Pfa
+optimal_pfa_base = fpr_base[best_idx_base]
+optimal_tpr_psi  = tpr_psi[best_idx_psi]
+optimal_tpr_base = tpr_base[best_idx_base]
+
+param_psi  = sum(p.numel() for p in model_psi.parameters())
+param_base = sum(p.numel() for p in model_base.parameters())
 
 print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
 print(f"Psl-CNN  AUC: {auc_psi:.4f}  γ = {gamma_psi:.4f}  params = {param_psi:,}")
 print(f"Baseline AUC: {auc_base:.4f}  γ = {gamma_base:.4f}  params = {param_base:,}")
+print(f"\n=== YOUDEN INDEX (Optimal Pfa) ===")
+print(f"Psl-CNN  optimal Pfa = {optimal_pfa_psi:.4f}  TPR = {optimal_tpr_psi:.4f}  Youden = {youden_psi[best_idx_psi]:.4f}")
+print(f"Baseline optimal Pfa = {optimal_pfa_base:.4f}  TPR = {optimal_tpr_base:.4f}  Youden = {youden_base[best_idx_base]:.4f}")
 
 # Save results
 Path("spectrum_data").mkdir(exist_ok=True)
@@ -94,8 +109,10 @@ with open("spectrum_data/evaluation_results.txt", "w") as f:
 
 # ROC plot
 plt.figure(figsize=(8,6))
-plt.plot(fpr_psi, tpr_psi, label=f'1D Psl-CNN (AUC = {auc_psi:.3f})')
-plt.plot(fpr_base, tpr_base, label=f'Baseline (AUC = {auc_base:.3f})')
+plt.plot(fpr_psi,  tpr_psi,  label=f'1D Psl-CNN (AUC = {auc_psi:.3f})')
+plt.plot(fpr_base, tpr_base, label=f'Baseline  (AUC = {auc_base:.3f})')
+plt.scatter(optimal_pfa_psi,  optimal_tpr_psi,  marker='*', s=200, color='blue',  zorder=5, label=f'Psl-CNN  Youden (Pfa={optimal_pfa_psi:.3f})')
+plt.scatter(optimal_pfa_base, optimal_tpr_base, marker='*', s=200, color='orange', zorder=5, label=f'Baseline Youden (Pfa={optimal_pfa_base:.3f})')
 plt.plot([0,1], [0,1], 'k--')
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
