@@ -235,7 +235,7 @@ plt.ylabel('Frequency')
 plt.title('Distribution of β Scores - Psl-CNN')
 plt.legend()
 plt.grid(True)
-plt.savefig("spectrum_data/beta_distribution_psl_cnn_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_Psi-NN_inverted/beta_distribution_psl_cnn_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 #MSE Signal Vs MSE Noise Plot
@@ -249,7 +249,7 @@ plt.ylabel('Frequency')
 plt.title('Distribution of MSE Scores - Psl-CNN')
 plt.legend()
 plt.grid(True)
-plt.savefig("spectrum_data/mse_distribution_psl_cnn_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_Psi-NN_inverted/mse_distribution_psl_cnn_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 #Baseline Beta Signal Vs Baseline Beta Noise Plot
@@ -262,7 +262,7 @@ plt.ylabel('Frequency')
 plt.title('Distribution of β Scores - Baseline')
 plt.legend()
 plt.grid(True)
-plt.savefig("spectrum_data/beta_distribution_baseline_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_Psi-NN_inverted/beta_distribution_baseline_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 #Baseline MSE Signal Vs Baseline MSE Noise Plot
@@ -276,6 +276,6 @@ plt.ylabel('Frequency')
 plt.title('Distribution of MSE Scores - Baseline')
 plt.legend()
 plt.grid(True)
-plt.savefig("spectrum_data/mse_distribution_baseline.png_invertedPsi-nn", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_Psi-NN_inverted/mse_distribution_baseline_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close() 
 
