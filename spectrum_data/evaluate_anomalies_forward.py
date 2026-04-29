@@ -18,6 +18,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 test_dict = torch.load("spectrum_data/test_data.pt", weights_only=False)
 test_data = test_dict["data"]
 test_labels = test_dict["labels"].numpy()
+test_snr = test_dict["snrs"].numpy()
+test_mods = np.array(test_dict["signals"])
 
 #need this in order to get gamma
 train_noise = torch.load("spectrum_data/train_noise.pt", weights_only=False)  # plain tensor
@@ -219,7 +221,7 @@ plt.ylabel('Frequency')
 plt.title('Distribution of β Scores - Psl-CNN')
 plt.legend()
 plt.grid(True)
-plt.savefig("anomalies_Psi-NN_backward/beta_distribution_psl_cnn_backwardsdPsi-nn.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_Psi-NN_forward/beta_distribution_psl_cnn_forwardPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 #MSE Signal Vs MSE Noise Plot
@@ -233,7 +235,7 @@ plt.ylabel('Frequency')
 plt.title('Distribution of MSE Scores - Psl-CNN')
 plt.legend()
 plt.grid(True)
-plt.savefig("anomalies_Psi-NN_backward/mse_distribution_backwardsdPsi-nn.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_Psi-NN_forward/mse_distribution_forwardPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 #Baseline Beta Signal Vs Baseline Beta Noise Plot
@@ -246,7 +248,7 @@ plt.ylabel('Frequency')
 plt.title('Distribution of β Scores - Baseline')
 plt.legend()
 plt.grid(True)
-plt.savefig("anomalies_Psi-NN_backward/beta_distribution_baseline_backwardsdPsi-nn.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_Psi-NN_forward/beta_distribution_baseline_forwardPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 #Baseline MSE Signal Vs Baseline MSE Noise Plot
@@ -260,5 +262,5 @@ plt.ylabel('Frequency')
 plt.title('Distribution of MSE Scores - Baseline')
 plt.legend()
 plt.grid(True)
-plt.savefig("anomalies_Psi-NN_backward/mse_distribution_baseline_backwardsdPsi-nn.png", dpi=300, bbox_inches='tight')
+plt.savefig("anomalies_Psi-NN_forward/mse_distribution_baseline_forwardPsi-nn.png", dpi=300, bbox_inches='tight')
 plt.close() 
