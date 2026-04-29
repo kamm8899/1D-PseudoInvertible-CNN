@@ -14,6 +14,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 test_dict = torch.load("spectrum_data/test_data.pt", weights_only=False)
 test_data = test_dict["data"]
 test_labels = test_dict["labels"].numpy()
+test_snr = test_dict["snrs"].numpy()
+test_mods = test_dict["signals"]  # list of modulation types (strings)
 
 #need this in order to get gamma
 train_noise = torch.load("spectrum_data/train_noise.pt", weights_only=False)  # plain tensor
@@ -74,16 +76,16 @@ auc_base = auc(fpr_base, tpr_base)
 
 # Youden Index: optimal point on ROC = max(TPR - FPR)
 # This gives the best trade-off between sensitivity and specificity
-youden_psi  = tpr_psi  - fpr_psi
-youden_base = tpr_base - fpr_base
+#youden_psi  = tpr_psi  - fpr_psi
+#youden_base = tpr_base - fpr_base
 
-best_idx_psi  = np.argmax(youden_psi)
-best_idx_base = np.argmax(youden_base)
+#best_idx_psi  = np.argmax(youden_psi)
+#best_idx_base = np.argmax(youden_base)
 
-optimal_pfa_psi  = fpr_psi[best_idx_psi]   # FPR at optimal point = Pfa
-optimal_pfa_base = fpr_base[best_idx_base]
-optimal_tpr_psi  = tpr_psi[best_idx_psi]
-optimal_tpr_base = tpr_base[best_idx_base]
+#optimal_pfa_psi  = fpr_psi[best_idx_psi]   # FPR at optimal point = Pfa
+#optimal_pfa_base = fpr_base[best_idx_base]
+#optimal_tpr_psi  = tpr_psi[best_idx_psi]
+#optimal_tpr_base = tpr_base[best_idx_base]
 
 param_psi  = sum(p.numel() for p in model_psi.parameters())
 param_base = sum(p.numel() for p in model_base.parameters())
@@ -135,3 +137,39 @@ print("✅ Evaluation complete! Results saved in spectrum_data/")
 # do 50 Epochs 
 
 #Deep Learning -- Transformers Base Model , Autoencoder Decoder, ResNet, 
+
+#TPR Based of SNR
+# ROC / AUC (higher β = anomaly — model reconstructs signals better than noise)
+mask= (test_snr >= -10) & (test_snr <= -5)
+fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
+auc_psi  = auc(fpr_psi,  tpr_psi)
+auc_base = auc(fpr_base, tpr_base)
+print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
+print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
+print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
+
+mask= (test_snr >= -5) & (test_snr <= -0)
+fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
+auc_psi  = auc(fpr_psi,  tpr_psi)
+auc_base = auc(fpr_base, tpr_base)
+print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
+print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
+print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
+
+mask= (test_snr >= 0) & (test_snr <= 5)
+fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
+auc_psi  = auc(fpr_psi,  tpr_psi)
+auc_base = auc(fpr_base, tpr_base)
+print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
+print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
+print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
+
+mask= (test_snr >= 5) & (test_snr <= 10)
+fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels[mask], beta_psi[mask])
+auc_psi  = auc(fpr_psi,  tpr_psi)
+auc_base = auc(fpr_base, tpr_base)
+print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
+print(f"Psl-CNN  AUC: {auc_psi:.4f}  tpr: { tpr_psi:.4f} γ = {gamma_psi:.4f}  params = {param_psi:,}")
+print(f"Baseline AUC: {auc_base:.4f}  tpr_base: {tpr_base:.4f} γ = {gamma_base:.4f}  params = {param_base:,}")
+
+

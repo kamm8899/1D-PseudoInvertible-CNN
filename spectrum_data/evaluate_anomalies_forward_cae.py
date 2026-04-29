@@ -6,7 +6,7 @@ from pathlib import Path
 import time
 from scipy.stats import norm   # for Q^{-1}(P_fa)
 
-from psinn_layer_1d import AE_Classifier1d, AE_Baseline_Classifier1d
+from cae_spectrum import AE_Classifier1d, AE_Baseline_Classifier1d
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
