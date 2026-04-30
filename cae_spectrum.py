@@ -82,13 +82,15 @@ if __name__ == "__main__":
 
     # Load training noise (shape: [N, 2, 1024] — take channel 0 as 1-channel input)
     train_noise = torch.load("spectrum_data/train_noise.pt", weights_only=False)
-    # Paper uses 1-channel input of 1024 values — use I channel only
     train_noise = train_noise[:, 0:1, :]   # (N, 1, 1024)
 
-    # Normalize to [0, 1] for sigmoid output (paper uses raw amplitude values)
-    min_val = train_noise.min()
-    max_val = train_noise.max()
-    train_noise = (train_noise - min_val) / (max_val - min_val + 1e-8)
+    # === PAPER REPRODUCTION: REMOVE NORMALIZATION ===
+    # We disable normalization to keep raw amplitude/power information
+   
+    print("⚠️  NO NORMALIZATION — using raw amplitudes (paper reproduction mode)")
+    # min_val = train_noise.min()          # commented out
+    # max_val = train_noise.max()
+    # train_noise = (train_noise - min_val) / (max_val - min_val + 1e-8)
 
     # Split: 90% train, 10% validation (mirrors paper's 450k/50k split ratio)
     n_val   = int(0.1 * len(train_noise))
@@ -141,7 +143,7 @@ if __name__ == "__main__":
         # Save best model (early stopping criterion from paper)
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), "spectrum_data/cae_best.pth")
+            torch.save(model.state_dict(), "spectrum_data/cae_best_raw.pth")
 
     print(f"\n✅ Training complete in {time.time()-start:.1f}s")
     print(f"   Best val loss: {best_val_loss:.6f}")

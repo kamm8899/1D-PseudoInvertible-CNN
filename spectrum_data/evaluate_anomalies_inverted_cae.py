@@ -21,17 +21,18 @@ test_labels = test_dict["labels"].numpy()
 test_snr = test_dict["snrs"].numpy()
 test_mods = np.array(test_dict["signals"])
 
-# CAE expects (N, 1, 1024) — use I channel only, then normalize to [0,1]
+# CAE expects (N, 1, 1024) — use I channel only
 test_data = test_data_raw[:, 0:1, :]      # (N, 1, 1024)
 
-train_noise_raw = torch.load("spectrum_data/train_noise.pt", weights_only=False)  # plain tensor
+train_noise_raw = torch.load("spectrum_data/train_noise.pt", weights_only=False)
 train_noise = train_noise_raw[:, 0:1, :]  # (N, 1, 1024)
 
-# Normalize using train statistics (must match training preprocessing)
-min_val = train_noise.min()
-max_val = train_noise.max()
-train_noise = (train_noise - min_val) / (max_val - min_val + 1e-8)
-test_data   = (test_data   - min_val) / (max_val - min_val + 1e-8)
+# === PAPER REPRODUCTION: REMOVE NORMALIZATION ===
+print("⚠️  NO NORMALIZATION — using raw amplitudes")
+# min_val = train_noise.min()          # commented out
+# max_val = train_noise.max()
+# train_noise = (train_noise - min_val) / (max_val - min_val + 1e-8)
+# test_data   = (test_data   - min_val) / (max_val - min_val + 1e-8)
 
 # ====================== LOAD MODEL ======================
 model_cae = CAE().to(device)
