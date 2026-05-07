@@ -277,5 +277,53 @@ plt.title('Distribution of MSE Scores - Baseline')
 plt.legend()
 plt.grid(True)
 plt.savefig("anomalies_Psi-NN_inverted/mse_distribution_baseline_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
-plt.close() 
+plt.close()
+
+# ====================== β/MSE DISTRIBUTIONS AT -5, 0, +5 dB ======================
+# Reset to Pfa=0.01 (may have been overwritten above)
+target_pfa = 0.01
+gamma_psi  = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi
+gamma_base = mu_base + norm.ppf(1 - target_pfa) * sigma_base
+
+for snr_val in [-5, 0, 5]:
+    mask = (test_snr == snr_val)
+    if mask.sum() == 0:
+        print(f"No samples at SNR={snr_val:+d} dB, skipping.")
+        continue
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle(f'β and MSE Distributions at SNR = {snr_val:+d} dB  (Pfa={target_pfa})', fontsize=13)
+
+    for col, (name, beta, gamma) in enumerate([
+        ("Psl-CNN",  beta_psi,  gamma_psi),
+        ("Baseline", beta_base, gamma_base),
+    ]):
+        h0 = mask & (test_labels == 0)
+        h1 = mask & (test_labels == 1)
+
+        # β row
+        axes[0, col].hist(beta[h0], bins=40, alpha=0.6, color='steelblue',  label='Noise (H0)')
+        axes[0, col].hist(beta[h1], bins=40, alpha=0.6, color='darkorange', label='Signal (H1)')
+        axes[0, col].axvline(gamma, color='red', linestyle='--', label='γ threshold')
+        axes[0, col].set_title(f'{name} — β Score')
+        axes[0, col].set_xlabel('β')
+        axes[0, col].set_ylabel('Frequency')
+        axes[0, col].legend()
+        axes[0, col].grid(True)
+
+        # MSE row
+        mse = 1 - beta
+        axes[1, col].hist(mse[h0], bins=40, alpha=0.6, color='steelblue',  label='Noise (H0)')
+        axes[1, col].hist(mse[h1], bins=40, alpha=0.6, color='darkorange', label='Signal (H1)')
+        axes[1, col].axvline(1 - gamma, color='red', linestyle='--', label='MSE threshold')
+        axes[1, col].set_title(f'{name} — MSE Score (1-β)')
+        axes[1, col].set_xlabel('MSE')
+        axes[1, col].set_ylabel('Frequency')
+        axes[1, col].legend()
+        axes[1, col].grid(True)
+
+    plt.tight_layout()
+    plt.savefig(out_dir / f"snr_distributions_{snr_val:+d}dB.png", dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Saved SNR={snr_val:+d} dB distribution plot.")
 

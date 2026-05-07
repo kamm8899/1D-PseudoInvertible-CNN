@@ -213,4 +213,47 @@ plt.grid(True)
 plt.savefig(out_dir / "mse_distribution_cae.png", dpi=300, bbox_inches='tight')
 plt.close()
 
+# ====================== β/MSE DISTRIBUTIONS AT -5, 0, +5 dB ======================
+# Reset to Pfa=0.01 (may have been overwritten above)
+target_pfa = 0.01
+gamma = mu_e + norm.ppf(target_pfa) * sigma_e
+
+for snr_val in [-5, 0, 5]:
+    mask = (test_snr == snr_val)
+    if mask.sum() == 0:
+        print(f"No samples at SNR={snr_val:+d} dB, skipping.")
+        continue
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    fig.suptitle(f'CAE β and MSE Distributions at SNR = {snr_val:+d} dB  (Pfa={target_pfa})', fontsize=13)
+
+    h0 = mask & (test_labels == 0)
+    h1 = mask & (test_labels == 1)
+
+    # β plot
+    axes[0].hist(beta_cae[h0], bins=40, alpha=0.6, color='steelblue',  label='Noise (H0)')
+    axes[0].hist(beta_cae[h1], bins=40, alpha=0.6, color='darkorange', label='Signal (H1)')
+    axes[0].axvline(gamma, color='red', linestyle='--', label='γ threshold')
+    axes[0].set_title('CAE — β Score')
+    axes[0].set_xlabel('β')
+    axes[0].set_ylabel('Frequency')
+    axes[0].legend()
+    axes[0].grid(True)
+
+    # MSE plot
+    mse_snr = 1 - beta_cae
+    axes[1].hist(mse_snr[h0], bins=40, alpha=0.6, color='steelblue',  label='Noise (H0)')
+    axes[1].hist(mse_snr[h1], bins=40, alpha=0.6, color='darkorange', label='Signal (H1)')
+    axes[1].axvline(1 - gamma, color='red', linestyle='--', label='MSE threshold')
+    axes[1].set_title('CAE — MSE Score (1-β)')
+    axes[1].set_xlabel('MSE')
+    axes[1].set_ylabel('Frequency')
+    axes[1].legend()
+    axes[1].grid(True)
+
+    plt.tight_layout()
+    plt.savefig(out_dir / f"snr_distributions_{snr_val:+d}dB.png", dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Saved SNR={snr_val:+d} dB distribution plot.")
+
 print(f"\n✅ Evaluation complete! Results saved in {out_dir}/")
