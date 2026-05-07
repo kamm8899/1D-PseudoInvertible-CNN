@@ -80,15 +80,12 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Load training noise (shape: [N, 2, 1024] — take channel 0 as 1-channel input)
+# Load training noise (shape: [N, 2, 1024] — take channel 0 as 1-channel input)
     train_noise = torch.load("spectrum_data/train_noise.pt", weights_only=False)
     train_noise = train_noise[:, 0:1, :]   # (N, 1, 1024)
 
-    # === PAPER REPRODUCTION: REMOVE NORMALIZATION ===
-    # We disable normalization to keep raw amplitude/power information
-   
-    print("⚠️  NO NORMALIZATION — using raw amplitudes (paper reproduction mode)")
-    # min_val = train_noise.min()          # commented out
+    # Normalization removed — preserves energy/power information needed for anomaly detection
+    # min_val = train_noise.min()
     # max_val = train_noise.max()
     # train_noise = (train_noise - min_val) / (max_val - min_val + 1e-8)
 
@@ -143,8 +140,15 @@ if __name__ == "__main__":
         # Save best model (early stopping criterion from paper)
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), "spectrum_data/cae_best_raw.pth")
+            torch.save(model.state_dict(), "spectrum_data/cae_best.pth")
 
     print(f"\n✅ Training complete in {time.time()-start:.1f}s")
     print(f"   Best val loss: {best_val_loss:.6f}")
     print(f"   Model saved to spectrum_data/cae_best.pth")
+
+    model.eval()
+    with torch.no_grad():
+        sample = train_noise[:8].to(device)
+        recon = model(sample)
+        mse = torch.mean((sample - recon)**2).item()
+        print(f"Final reconstruction MSE on noise: {mse:.6f}")

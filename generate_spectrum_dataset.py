@@ -16,97 +16,110 @@ def add_awgn(signal: torch.Tensor, snr_db: float) -> torch.Tensor:
     noise = torch.sqrt(noise_power / 2.0) * torch.randn_like(signal)
     return signal + noise
 
+def _make_signal(mod: str, length: int, _32qam_re, _32qam_im) -> torch.Tensor:
+    """Generate one normalized IQ signal for the given modulation."""
+    if mod == 'qpsk':
+        symbols = torch.tensor([1+1j, 1-1j, -1+1j, -1-1j])[torch.randint(0, 4, (length//8,))]
+        signal  = torch.repeat_interleave(symbols, 8)
+    elif mod == 'bpsk':
+        symbols = torch.tensor([1, -1])[torch.randint(0, 2, (length//4,))]
+        signal  = torch.repeat_interleave(symbols, 4) + 0j
+    elif mod == '16qam':
+        re = torch.tensor([-3, -1, 1, 3])[torch.randint(0, 4, (length//4,))]
+        im = torch.tensor([-3, -1, 1, 3])[torch.randint(0, 4, (length//4,))]
+        signal = torch.repeat_interleave(re + 1j * im, 4)
+    else:  # 32-QAM cross constellation
+        idx    = torch.randint(0, 32, (length//4,))
+        signal = torch.repeat_interleave(_32qam_re[idx] + 1j * _32qam_im[idx], 4)
+
+    iq = torch.stack([signal.real, signal.imag], dim=0).squeeze(1)
+    return iq / torch.abs(iq).max()
+
+
 def generate_iq_dataset(
-    num_train: int = 20000,
-    num_test: int = 5000,
-    length: int = 1024,
-    snr_range: tuple = (-10, 10)
+    num_train:               int = 20000,
+    length:                  int = 1024,
+    samples_per_mod_per_snr: int = 200,
+    noise_per_snr:           int = 200,
 ):
-    """Generate training (pure noise) and test (noise + modulated signals) datasets."""
+    """
+    Training set : num_train pure-noise samples (normalized).
+    Test set     : fixed grid — 11 SNR points x 4 modulations x samples_per_mod_per_snr
+                   signal samples + noise_per_snr noise samples per SNR point.
+                   Guarantees exactly samples_per_mod_per_snr samples at every (mod, SNR) cell.
+    """
     np.random.seed(42)
     torch.manual_seed(42)
 
-    # Training Set
-    
-    train_noise = torch.randn(num_train, 2, length, dtype=torch.float32)
-    train_noise = (train_noise - train_noise.mean()) / train_noise.std()
+    # ── Training set ────────────────────────────────────────────────────────
+    train_noise_raw = torch.randn(num_train, 2, length, dtype=torch.float32)
+    train_noise     = (train_noise_raw - train_noise_raw.mean()) / train_noise_raw.std()
 
-    # TEST SET 
-    test_data = []
-    test_labels = []   # 0 = pure noise, 1 = signal present (anomaly)
-    test_snrs = []
-    test_mods = []
+    # ── Test set — fixed grid ────────────────────────────────────────────────
+    snr_points  = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10]
+    modulations = ['qpsk', 'bpsk', '16qam', '32qam']
 
-    modulations = ['qpsk', 'bpsk', '16qam', 'fm']
+    _32qam_re = torch.tensor(
+        [-5,-3,-1,1,3,5, -5,-3,-1,1,3,5, -5,-3,-1,1,3,5,
+         -5,-3,-1,1,3,5, -3,-1,1,3,       -3,-1,1,3],
+        dtype=torch.float32)
+    _32qam_im = torch.tensor(
+        [-5,-5,-5,-5,-5,-5, -3,-3,-3,-3,-3,-3, -1,-1,-1,-1,-1,-1,
+          1, 1, 1, 1, 1, 1,  3, 3, 3, 3,        5, 5, 5, 5],
+        dtype=torch.float32)
 
-    for _ in range(num_test):
-        snr_db = np.random.uniform(*snr_range)
+    test_data, test_labels, test_snrs, test_mods = [], [], [], []
 
-        if np.random.rand() < 0.5:  # 50% pure noise
+    for snr_db in snr_points:
+        # Exactly samples_per_mod_per_snr signal samples per modulation at this SNR
+        for mod in modulations:
+            for _ in range(samples_per_mod_per_snr):
+                sig    = _make_signal(mod, length, _32qam_re, _32qam_im)
+                sample = add_awgn(sig, snr_db)
+                sample = (sample - sample.mean()) / sample.std()
+                test_data.append(sample)
+                test_labels.append(1)
+                test_snrs.append(float(snr_db))
+                test_mods.append(mod)
+
+        # noise_per_snr noise (H0) samples at this SNR point
+        for _ in range(noise_per_snr):
             sample = torch.randn(2, length, dtype=torch.float32)
-            label = 0
-            mod = 'none'
-        else:
-            t = torch.arange(length, dtype=torch.float32)
-            mod = np.random.choice(modulations)
+            sample = (sample - sample.mean()) / sample.std()
+            test_data.append(sample)
+            test_labels.append(0)
+            test_snrs.append(float(snr_db))
+            test_mods.append('none')
 
-            if mod == 'qpsk':
-                symbols = torch.tensor([1+1j, 1-1j, -1+1j, -1-1j])[torch.randint(0, 4, (length//8,))]
-                signal = torch.repeat_interleave(symbols, 8)
-            elif mod == 'bpsk':
-                symbols = torch.tensor([1, -1])[torch.randint(0, 2, (length//4,))]
-                signal = torch.repeat_interleave(symbols, 4) + 0j
-            elif mod == '16qam':
-                re = torch.tensor([-3, -1, 1, 3])[torch.randint(0, 4, (length//4,))]
-                im = torch.tensor([-3, -1, 1, 3])[torch.randint(0, 4, (length//4,))]
-                symbols = re + 1j * im
-                signal = torch.repeat_interleave(symbols, 4)
-            else:  # FM
-                freq = 0.1 * torch.sin(2 * np.pi * 0.01 * t)
-                signal = torch.cos(2 * np.pi * freq * t + torch.cumsum(0.05 * freq, dim=0)) + 0j
-
-            # Normalize signal and add controlled noise
-            #turn to vector
-            signal = torch.stack([signal.real, signal.imag], dim=0).squeeze(1)
-            signal = signal / torch.abs(signal).max()
-            sample = add_awgn(signal, snr_db)
-            label = 1
-
-        # Normalize sample
-        sample = (sample - sample.mean()) / sample.std()
-        test_data.append(sample)
-        test_mods.append(mod)
-        test_labels.append(label)
-        test_snrs.append(snr_db)
-
-    test_data = torch.stack(test_data)
+    test_data   = torch.stack(test_data)
     test_labels = torch.tensor(test_labels, dtype=torch.long)
-    # test_mods is a list of strings — keep as list, not tensor
-    test_snrs = torch.tensor(test_snrs, dtype=torch.float32)
+    test_snrs   = torch.tensor(test_snrs,   dtype=torch.float32)
 
-    return train_noise, test_data, test_labels, test_snrs, test_mods
+    return train_noise, train_noise_raw, test_data, test_labels, test_snrs, test_mods
 
-# Main function to generate and save dataset
+
+# ── Entry point ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print("Generating spectrum-sensing dataset (Option 1 - Pure Python)...")
-    
-    train_noise, test_data, test_labels, test_snrs, test_mods  = generate_iq_dataset()
 
-    # Create output folder
+    train_noise, train_noise_raw, test_data, test_labels, test_snrs, test_mods = \
+        generate_iq_dataset()
+
     Path("spectrum_data").mkdir(exist_ok=True)
 
-    # Save files
-    torch.save(train_noise, "spectrum_data/train_noise.pt")
+    torch.save(train_noise_raw, "spectrum_data/train_noise_raw.pt")   # unnormalized — Energy Detector
+    torch.save(train_noise,     "spectrum_data/train_noise.pt")        # normalized  — models
     torch.save({
-        "data": test_data,
-        "labels": test_labels,      # 0 = noise, 1 = anomaly
-        "snrs": test_snrs,
-        "signals": test_mods
+        "data":    test_data,
+        "labels":  test_labels,
+        "snrs":    test_snrs,
+        "signals": test_mods,
     }, "spectrum_data/test_data.pt")
 
-    print("✅ Dataset generation complete!")
+    n_signal = test_labels.sum().item()
+    n_noise  = (test_labels == 0).sum().item()
+    print("Dataset generation complete!")
     print(f"   Training samples : {train_noise.shape}  (pure noise only)")
-    print(f"   Test samples     : {test_data.shape}  ({test_labels.sum().item()} anomalies)")
+    print(f"   Test samples     : {test_data.shape}  ({n_signal} signal, {n_noise} noise)")
+    print(f"   Per (mod, SNR)   : {200} signal samples at each of 11 SNR x 4 modulation cells")
     print(f"   Files saved in   : ./spectrum_data/")
-
-    #perform on each four of the modulations 

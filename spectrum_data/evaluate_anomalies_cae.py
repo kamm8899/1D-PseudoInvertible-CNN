@@ -27,9 +27,8 @@ test_data = test_data_raw[:, 0:1, :]      # (N, 1, 1024)
 train_noise_raw = torch.load("spectrum_data/train_noise.pt", weights_only=False)
 train_noise = train_noise_raw[:, 0:1, :]  # (N, 1, 1024)
 
-# === PAPER REPRODUCTION: REMOVE NORMALIZATION ===
-print("⚠️  NO NORMALIZATION — using raw amplitudes")
-# min_val = train_noise.min()          # commented out
+# Normalization removed — preserves energy/power information needed for anomaly detection
+# min_val = train_noise.min()
 # max_val = train_noise.max()
 # train_noise = (train_noise - min_val) / (max_val - min_val + 1e-8)
 # test_data   = (test_data   - min_val) / (max_val - min_val + 1e-8)
@@ -63,18 +62,20 @@ mu_e, sigma_e = np.mean(train_beta), np.std(train_beta)
 print(f"CAE H0 β → mean = {mu_e:.4f},  std = {sigma_e:.4f}")
 
 # ====================== NEYMAN-PEARSON THRESHOLD γ ======================
+# Paper eq (7): β < γ → anomaly, so γ is set below H0 mean
+# P_fa = P(β < γ | H0) = Φ((γ - μ) / σ) → γ = μ + Φ⁻¹(P_fa)·σ
+# For P_fa=0.01, Φ⁻¹(0.01) ≈ -2.33 → γ = μ - 2.33σ (below H0 mean)
 target_pfa = 0.01
-# gamma = mu_e + norm.ppf(1 - target_pfa) * sigma_e  # upper-tail (inverted)
-gamma = mu_e - norm.ppf(1 - target_pfa) * sigma_e   # lower-tail: P(β < γ | H0) = P_fa
+gamma = mu_e + norm.ppf(target_pfa) * sigma_e
 print(f"Target P_fa = {target_pfa} → γ = {gamma:.4f}")
 
 # ====================== TEST SET EVALUATION ======================
 print("\nComputing β scores on test set...")
 beta_cae = compute_beta(model_cae, test_data)
 
-# ROC / AUC (higher β = anomaly — model reconstructs signals better than noise)
-# fpr_cae, tpr_cae, thresholds_cae = roc_curve(test_labels, beta_cae)   # inverted score
-fpr_cae, tpr_cae, thresholds_cae = roc_curve(test_labels, -beta_cae)
+# ROC / AUC — paper: lower β = anomaly (β < γ → signal detected)
+# Without per-sample normalization, power differences are preserved
+fpr_cae, tpr_cae, thresholds_cae = roc_curve(test_labels, -beta_cae)  # negate: lower β = higher score
 auc_cae = auc(fpr_cae, tpr_cae)
 
 # Youden Index
@@ -91,12 +92,12 @@ print(f"\n=== YOUDEN INDEX (Optimal Pfa) ===")
 print(f"CAE  optimal Pfa = {optimal_pfa:.4f}  TPR = {optimal_tpr:.4f}  Youden = {youden_cae[best_idx]:.4f}")
 
 # ====================== OUTPUT FOLDER ======================
-out_dir = Path("anomalies_CAE_inverted")
+out_dir = Path("anomalies_CAE")
 out_dir.mkdir(exist_ok=True)
 for f in out_dir.glob("*.png"):
     f.unlink()
 
-with open("spectrum_data/evaluation_results_cae_inverted.txt", "w") as f:
+with open("spectrum_data/evaluation_results_cae.txt", "w") as f:
     f.write("=== EVALUATION RESULTS (Pablos et al. Step 3.3 - β + Neyman-Pearson) ===\n")
     f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
     f.write(f"CAE AUC: {auc_cae:.4f}\n")
@@ -105,13 +106,13 @@ with open("spectrum_data/evaluation_results_cae_inverted.txt", "w") as f:
 
 # ROC plot
 plt.figure(figsize=(8,6))
-plt.plot(fpr_cae, tpr_cae, label=f'CAE Inverted (AUC = {auc_cae:.3f})')
+plt.plot(fpr_cae, tpr_cae, label=f'CAE(AUC = {auc_cae:.3f})')
 plt.scatter(optimal_pfa, optimal_tpr, marker='*', s=200, color='blue', zorder=5,
-            label=f'CAE Inverted Youden (Pfa={optimal_pfa:.3f})')
+            label=f'CAE Youden (Pfa={optimal_pfa:.3f})')
 plt.plot([0,1], [0,1], 'k--')
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
-plt.title('ROC Curve - Modulation-Agnostic Anomaly Detection (β statistic) — CAE Inverted')
+plt.title('ROC Curve - Modulation-Agnostic Anomaly Detection (β statistic) — CAE')
 plt.legend()
 plt.grid(True)
 plt.savefig(out_dir / "roc_comparison.png", dpi=300, bbox_inches='tight')
@@ -127,7 +128,6 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
     mask = (test_snr >= snr_low) & (test_snr < snr_high)
     if mask.sum() == 0:
         continue
-    # fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])   # inverted score
     fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
@@ -141,11 +141,10 @@ print(f"TPR BY MODULATION TYPE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
 print(f"{'Modulation':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
 print(f"{'─'*60}")
 
-for mod in ['qpsk', 'bpsk', '16qam', 'fm']:
+for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
     mask = (test_mods == mod) | (test_labels == 0)
     if mask.sum() == 0:
         continue
-    # fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])   # inverted score
     fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
@@ -154,8 +153,7 @@ for mod in ['qpsk', 'bpsk', '16qam', 'fm']:
 
 # TPR for P_fa = 0.05
 target_pfa = 0.05
-# gamma = mu_e + norm.ppf(1 - target_pfa) * sigma_e  # upper-tail (inverted)
-gamma = mu_e - norm.ppf(1 - target_pfa) * sigma_e   # lower-tail: P(β < γ | H0) = P_fa
+gamma = mu_e + norm.ppf(target_pfa) * sigma_e
 print(f"\nTarget P_fa = {target_pfa} → γ = {gamma:.4f}")
 
 print(f"\n{'='*60}")
@@ -167,7 +165,6 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
     mask = (test_snr >= snr_low) & (test_snr < snr_high)
     if mask.sum() == 0:
         continue
-    # fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])   # inverted score
     fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
@@ -180,11 +177,10 @@ print(f"TPR BY MODULATION TYPE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
 print(f"{'Modulation':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
 print(f"{'─'*60}")
 
-for mod in ['qpsk', 'bpsk', '16qam', 'fm']:
+for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
     mask = (test_mods == mod) | (test_labels == 0)
     if mask.sum() == 0:
         continue
-    # fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])   # inverted score
     fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
@@ -193,28 +189,28 @@ for mod in ['qpsk', 'bpsk', '16qam', 'fm']:
 
 # ====================== DISTRIBUTION PLOTS ======================
 plt.figure(figsize=(8,6))
-plt.hist(beta_cae[test_labels==0], bins=50, alpha=0.5, label='CAE Inverted Noise (H0)')
-plt.hist(beta_cae[test_labels==1], bins=50, alpha=0.5, label='CAE Inverted Anomaly (H1)')
-plt.axvline(gamma, color='red', linestyle='--', label=f'CAE Inverted γ (P_fa={target_pfa})')
+plt.hist(beta_cae[test_labels==0], bins=50, alpha=0.5, label='CAE Noise (H0)')
+plt.hist(beta_cae[test_labels==1], bins=50, alpha=0.5, label='CAE Anomaly (H1)')
+plt.axvline(gamma, color='red', linestyle='--', label=f'CAE γ (P_fa={target_pfa})')
 plt.xlabel('β Score')
 plt.ylabel('Frequency')
-plt.title('Distribution of β Scores - CAE Inverted')
+plt.title('Distribution of β Scores - CAE')
 plt.legend()
 plt.grid(True)
-plt.savefig(out_dir / "beta_distribution_cae_inverted.png", dpi=300, bbox_inches='tight')
+plt.savefig(out_dir / "beta_distribution_cae.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 mse_cae = 1 - beta_cae
 plt.figure(figsize=(8,6))
-plt.hist(mse_cae[test_labels==0], bins=50, alpha=0.5, label='CAE Inverted Noise (H0)')
-plt.hist(mse_cae[test_labels==1], bins=50, alpha=0.5, label='CAE Inverted Anomaly (H1)')
+plt.hist(mse_cae[test_labels==0], bins=50, alpha=0.5, label='CAE Noise (H0)')
+plt.hist(mse_cae[test_labels==1], bins=50, alpha=0.5, label='CAE Anomaly (H1)')
 plt.axvline(1 - gamma, color='red', linestyle='--', label=f'CAE Inverted MSE Threshold (P_fa={target_pfa})')
 plt.xlabel('MSE Score (1 - β)')
 plt.ylabel('Frequency')
 plt.title('Distribution of MSE Scores - CAE Inverted')
 plt.legend()
 plt.grid(True)
-plt.savefig(out_dir / "mse_distribution_cae_inverted.png", dpi=300, bbox_inches='tight')
+plt.savefig(out_dir / "mse_distribution_cae.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 print(f"\n✅ Evaluation complete! Results saved in {out_dir}/")

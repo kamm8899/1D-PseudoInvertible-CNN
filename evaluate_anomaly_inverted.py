@@ -154,7 +154,7 @@ print(f"TPR BY MODULATION TYPE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
 print(f"{'Modulation':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
 print(f"{'─'*70}")
 
-for mod in ['qpsk', 'bpsk', '16qam', 'fm']:
+for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
     # include all noise samples so both classes (H0 and H1) are present for ROC
     mask = (test_mods == mod) | (test_labels == 0)
     if mask.sum() == 0:
@@ -202,7 +202,7 @@ print(f"TPR BY MODULATION TYPE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
 print(f"{'Modulation':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
 print(f"{'─'*70}")
 
-for mod in ['qpsk', 'bpsk', '16qam', 'fm']:
+for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
     # include all noise samples so both classes (H0 and H1) are present for ROC
     mask = (test_mods == mod) | (test_labels == 0)
     if mask.sum() == 0:
