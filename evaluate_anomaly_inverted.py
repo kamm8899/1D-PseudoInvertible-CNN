@@ -280,6 +280,10 @@ plt.savefig("anomalies_Psi-NN_inverted/mse_distribution_baseline_nvertedPsi-nn.p
 plt.close()
 
 # ====================== β/MSE DISTRIBUTIONS AT -5, 0, +5 dB ======================
+# Professor Ask: "We should plot beta and MMSE for different specific SNRs, a low, medium
+# and high value — we want to see how H0 and H1 space and overlap with SNR.
+# For the pdfs, you can do for three different SNR values: -5dB, 0, 5dB."
+# Produces a 2x2 figure per SNR: top row = β, bottom row = MSE (1-β), columns = Psl-CNN / Baseline.
 # Reset to Pfa=0.01 (may have been overwritten above)
 target_pfa = 0.01
 gamma_psi  = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi
@@ -328,6 +332,10 @@ for snr_val in [-5, 0, 5]:
     print(f"Saved SNR={snr_val:+d} dB distribution plot.")
 
 # ====================== Pd vs SNR (Pfa = 0.01) ======================
+# Professor Ask: "Redo experiments for specific SNRs: -10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10
+# so we can plot Pd vs SNR for Pfa = 0.01 — Three lines: ED, baseline CAE, Psi-NN."
+# This section produces the Psl-CNN and Baseline lines. ED line is in energy_detector.py.
+# Results saved to spectrum_data/ and combined into one figure by plot_pd_vs_snr.py.
 target_pfa  = 0.01
 gamma_psi   = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi
 gamma_base  = mu_base + norm.ppf(1 - target_pfa) * sigma_base
@@ -357,6 +365,9 @@ np.save("spectrum_data/snr_points.npy",         np.array(snr_points, dtype=float
 print("Saved pd_vs_snr_psinn.npy and pd_vs_snr_baseline.npy")
 
 # ====================== AUC PER MODULATION × SNR TABLE ======================
+# Professor Ask: "Determine AUC per modulation for different SNRs table."
+# Rows = modulation type (qpsk, bpsk, 16qam, 32qam), columns = each of the 11 SNR points.
+# Prints one table for Psl-CNN and one for Baseline.
 modulations_list = ['qpsk', 'bpsk', '16qam', '32qam']
 
 for model_name, beta_scores in [("Psl-CNN", beta_psi), ("Baseline", beta_base)]:

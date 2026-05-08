@@ -1,10 +1,13 @@
 '''
 Combined Pd vs SNR plot — Three lines: ED, CAE, Psi-NN
-Requires the following files to exist in spectrum_data/:
-    snr_points.npy
-    pd_vs_snr_ed.npy      (from energy_detector.py)
-    pd_vs_snr_cae.npy     (from spectrum_data/evaluate_anomalies_cae.py)
-    pd_vs_snr_psinn.npy   (from evaluate_anomaly_inverted.py)
+
+Professor Ask: "Redo experiments for specific SNRs: -10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10
+so we can plot Pd vs SNR for Pfa = 0.01 — Three lines: ED, baseline CAE, Psi-NN (similar to the paper)."
+
+Run order — all three must be run before this file:
+    energy_detector.py                        → pd_vs_snr_ed.npy
+    spectrum_data/evaluate_anomalies_cae.py   → pd_vs_snr_cae.npy
+    evaluate_anomaly_inverted.py              → pd_vs_snr_psinn.npy
 '''
 
 import numpy as np

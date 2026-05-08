@@ -1,9 +1,15 @@
 '''
 Energy Detector (ED) — Benchmark for Spectrum Sensing
-Implements the classical energy detection approach for comparison against
-PsiNN and CAE anomaly detectors.
 
-Detection rule: E = mean(I² + Q²) per sample.
+Professor Ask: "Implement ED (energy detector) for comparison benchmark.
+Save samples before normalization and compute mean squared power per sample
+across both I and Q channels. Estimate H0 distribution from unnormalized
+training noise. Set Neyman-Pearson threshold. Compute AUC and TPR at each SNR level."
+
+Also contributes to: "Redo experiments for specific SNRs — Three lines: ED, baseline CAE, Psi-NN."
+Saves pd_vs_snr_ed.npy which is one of the three lines in plot_pd_vs_snr.py.
+
+Detection rule: E = mean(I² + Q²) per sample across both channels.
 Threshold set via Neyman-Pearson criterion on unnormalized training noise (H0).
 Higher energy → signal present (H1).
 '''

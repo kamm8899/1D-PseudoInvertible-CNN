@@ -56,6 +56,9 @@ def generate_iq_dataset(
     train_noise     = (train_noise_raw - train_noise_raw.mean()) / train_noise_raw.std()
 
     # ── Test set — fixed grid ────────────────────────────────────────────────
+    # Professor Ask: "Make sure you have enough samples per modulation for each SNR, e.g. 200 samples each."
+    # Uses a fixed grid instead of random uniform SNR draws so every (modulation, SNR) cell
+    # has exactly samples_per_mod_per_snr samples — including the edge points -10 and +10 dB.
     snr_points  = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10]
     modulations = ['qpsk', 'bpsk', '16qam', '32qam']
 
