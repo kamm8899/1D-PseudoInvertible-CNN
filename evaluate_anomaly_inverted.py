@@ -356,3 +356,24 @@ np.save("spectrum_data/pd_vs_snr_baseline.npy", np.array(pd_base_arr))
 np.save("spectrum_data/snr_points.npy",         np.array(snr_points, dtype=float))
 print("Saved pd_vs_snr_psinn.npy and pd_vs_snr_baseline.npy")
 
+# ====================== AUC PER MODULATION × SNR TABLE ======================
+modulations_list = ['qpsk', 'bpsk', '16qam', '32qam']
+
+for model_name, beta_scores in [("Psl-CNN", beta_psi), ("Baseline", beta_base)]:
+    print(f"\n{'='*90}")
+    print(f"AUC PER MODULATION × SNR — {model_name}")
+    print(f"{'':12}" + "".join(f"  {s:>5}" for s in snr_points))
+    print("─" * 90)
+    for mod in modulations_list:
+        row = f"{mod:<12}"
+        for snr_db in snr_points:
+            snr_mask = (test_snr == snr_db)
+            mask = (snr_mask & (test_mods == mod)) | (snr_mask & (test_labels == 0))
+            if mask.sum() == 0 or len(np.unique(test_labels[mask])) < 2:
+                row += "    N/A"
+                continue
+            fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_scores[mask])
+            row += f"  {auc(fpr_s, tpr_s):.3f}"
+        print(row)
+    print("─" * 90)
+

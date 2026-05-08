@@ -279,4 +279,26 @@ print(f"{'─'*45}")
 np.save("spectrum_data/pd_vs_snr_cae.npy", np.array(pd_cae_arr))
 print("Saved pd_vs_snr_cae.npy")
 
+# ====================== AUC PER MODULATION × SNR TABLE ======================
+modulations_list = ['qpsk', 'bpsk', '16qam', '32qam']
+
+print(f"\n{'='*80}")
+print(f"AUC PER MODULATION × SNR — CAE")
+print(f"{'':12}" + "".join(f"  {s:>5}" for s in snr_points))
+print("─" * 80)
+
+for mod in modulations_list:
+    row = f"{mod:<12}"
+    for snr_db in snr_points:
+        snr_mask = (test_snr == snr_db)
+        mask = (snr_mask & (test_mods == mod)) | (snr_mask & (test_labels == 0))
+        if mask.sum() == 0 or len(np.unique(test_labels[mask])) < 2:
+            row += "    N/A"
+            continue
+        fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
+        row += f"  {auc(fpr_s, tpr_s):.3f}"
+    print(row)
+
+print("─" * 80)
+
 print(f"\n✅ Evaluation complete! Results saved in {out_dir}/")
