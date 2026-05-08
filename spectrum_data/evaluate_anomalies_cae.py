@@ -256,4 +256,27 @@ for snr_val in [-5, 0, 5]:
     plt.close()
     print(f"Saved SNR={snr_val:+d} dB distribution plot.")
 
+# ====================== Pd vs SNR (Pfa = 0.01) ======================
+target_pfa = 0.01
+gamma      = mu_e + norm.ppf(target_pfa) * sigma_e
+
+snr_points = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10]
+pd_cae_arr = []
+
+print(f"\n{'='*45}")
+print(f"Pd vs SNR  (Pfa = {target_pfa})")
+print(f"{'SNR (dB)':>10}  {'CAE Pd':>10}")
+print(f"{'─'*45}")
+
+for snr_db in snr_points:
+    sig_mask = (test_snr == snr_db) & (test_labels == 1)
+    pd_c = float(np.mean(beta_cae[sig_mask] < gamma)) if sig_mask.sum() > 0 else np.nan
+    pd_cae_arr.append(pd_c)
+    print(f"{snr_db:>10d}  {pd_c:>10.4f}")
+
+print(f"{'─'*45}")
+
+np.save("spectrum_data/pd_vs_snr_cae.npy", np.array(pd_cae_arr))
+print("Saved pd_vs_snr_cae.npy")
+
 print(f"\n✅ Evaluation complete! Results saved in {out_dir}/")

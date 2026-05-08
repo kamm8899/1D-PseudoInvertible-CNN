@@ -327,3 +327,32 @@ for snr_val in [-5, 0, 5]:
     plt.close()
     print(f"Saved SNR={snr_val:+d} dB distribution plot.")
 
+# ====================== Pd vs SNR (Pfa = 0.01) ======================
+target_pfa  = 0.01
+gamma_psi   = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi
+gamma_base  = mu_base + norm.ppf(1 - target_pfa) * sigma_base
+
+snr_points  = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10]
+pd_psi_arr  = []
+pd_base_arr = []
+
+print(f"\n{'='*55}")
+print(f"Pd vs SNR  (Pfa = {target_pfa})")
+print(f"{'SNR (dB)':>10}  {'Psl-CNN Pd':>12}  {'Baseline Pd':>12}")
+print(f"{'─'*55}")
+
+for snr_db in snr_points:
+    sig_mask = (test_snr == snr_db) & (test_labels == 1)
+    pd_p = float(np.mean(beta_psi[sig_mask]  > gamma_psi))  if sig_mask.sum() > 0 else np.nan
+    pd_b = float(np.mean(beta_base[sig_mask] > gamma_base)) if sig_mask.sum() > 0 else np.nan
+    pd_psi_arr.append(pd_p)
+    pd_base_arr.append(pd_b)
+    print(f"{snr_db:>10d}  {pd_p:>12.4f}  {pd_b:>12.4f}")
+
+print(f"{'─'*55}")
+
+np.save("spectrum_data/pd_vs_snr_psinn.npy",    np.array(pd_psi_arr))
+np.save("spectrum_data/pd_vs_snr_baseline.npy", np.array(pd_base_arr))
+np.save("spectrum_data/snr_points.npy",         np.array(snr_points, dtype=float))
+print("Saved pd_vs_snr_psinn.npy and pd_vs_snr_baseline.npy")
+
