@@ -68,58 +68,67 @@ def generate_iq_dataset(
           1, 1, 1, 1, 1, 1,  3, 3, 3, 3,        5, 5, 5, 5],
         dtype=torch.float32)
 
-    test_data, test_labels, test_snrs, test_mods = [], [], [], []
+    test_data, test_data_raw, test_labels, test_snrs, test_mods = [], [], [], [], []
 
     for snr_db in snr_points:
         # Exactly samples_per_mod_per_snr signal samples per modulation at this SNR
         for mod in modulations:
             for _ in range(samples_per_mod_per_snr):
-                sig    = _make_signal(mod, length, _32qam_re, _32qam_im)
-                sample = add_awgn(sig, snr_db)
-                sample = (sample - sample.mean()) / sample.std()
+                sig        = _make_signal(mod, length, _32qam_re, _32qam_im)
+                sample_raw = add_awgn(sig, snr_db)                          # unnormalized
+                sample     = (sample_raw - sample_raw.mean()) / sample_raw.std()  # normalized
                 test_data.append(sample)
+                test_data_raw.append(sample_raw)
                 test_labels.append(1)
                 test_snrs.append(float(snr_db))
                 test_mods.append(mod)
 
         # noise_per_snr noise (H0) samples at this SNR point
         for _ in range(noise_per_snr):
-            sample = torch.randn(2, length, dtype=torch.float32)
-            sample = (sample - sample.mean()) / sample.std()
+            sample_raw = torch.randn(2, length, dtype=torch.float32)        # unnormalized
+            sample     = (sample_raw - sample_raw.mean()) / sample_raw.std()  # normalized
             test_data.append(sample)
+            test_data_raw.append(sample_raw)
             test_labels.append(0)
             test_snrs.append(float(snr_db))
             test_mods.append('none')
 
-    test_data   = torch.stack(test_data)
-    test_labels = torch.tensor(test_labels, dtype=torch.long)
-    test_snrs   = torch.tensor(test_snrs,   dtype=torch.float32)
+    test_data     = torch.stack(test_data)
+    test_data_raw = torch.stack(test_data_raw)
+    test_labels   = torch.tensor(test_labels, dtype=torch.long)
+    test_snrs     = torch.tensor(test_snrs,   dtype=torch.float32)
 
-    return train_noise, train_noise_raw, test_data, test_labels, test_snrs, test_mods
+    return train_noise, train_noise_raw, test_data, test_data_raw, test_labels, test_snrs, test_mods
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print("Generating spectrum-sensing dataset (Option 1 - Pure Python)...")
 
-    train_noise, train_noise_raw, test_data, test_labels, test_snrs, test_mods = \
+    train_noise, train_noise_raw, test_data, test_data_raw, test_labels, test_snrs, test_mods = \
         generate_iq_dataset()
 
     Path("spectrum_data").mkdir(exist_ok=True)
 
-    torch.save(train_noise_raw, "spectrum_data/train_noise_raw.pt")   # unnormalized — Energy Detector
-    torch.save(train_noise,     "spectrum_data/train_noise.pt")        # normalized  — models
+    torch.save(train_noise_raw, "spectrum_data/train_noise_raw.pt")   # unnormalized — Energy Detector H0
+    torch.save(train_noise,     "spectrum_data/train_noise.pt")        # normalized   — PsiNN / CAE
     torch.save({
         "data":    test_data,
         "labels":  test_labels,
         "snrs":    test_snrs,
         "signals": test_mods,
     }, "spectrum_data/test_data.pt")
+    torch.save({
+        "data":    test_data_raw,
+        "labels":  test_labels,
+        "snrs":    test_snrs,
+        "signals": test_mods,
+    }, "spectrum_data/test_data_raw.pt")                               # unnormalized — Energy Detector
 
     n_signal = test_labels.sum().item()
     n_noise  = (test_labels == 0).sum().item()
     print("Dataset generation complete!")
     print(f"   Training samples : {train_noise.shape}  (pure noise only)")
     print(f"   Test samples     : {test_data.shape}  ({n_signal} signal, {n_noise} noise)")
-    print(f"   Per (mod, SNR)   : {200} signal samples at each of 11 SNR x 4 modulation cells")
+    print(f"   Per (mod, SNR)   : 200 signal samples at each of 11 SNR x 4 modulation cells")
     print(f"   Files saved in   : ./spectrum_data/")
