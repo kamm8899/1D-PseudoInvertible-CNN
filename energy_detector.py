@@ -149,9 +149,11 @@ plt.savefig(out_dir / "roc_ed.png", dpi=300, bbox_inches='tight')
 plt.close()
 
 # Energy score distribution (H0 vs H1)
+# Shared bins with fixed narrow width so both distributions are directly comparable
+shared_bins = np.arange(0, max(test_energy.max(), gamma * 3) + 0.05, 0.05)
 plt.figure(figsize=(8, 6))
-plt.hist(test_energy[test_labels == 0], bins=50, alpha=0.6, color='steelblue',  label='Noise (H0)')
-plt.hist(test_energy[test_labels == 1], bins=50, alpha=0.6, color='darkorange', label='Signal (H1)')
+plt.hist(test_energy[test_labels == 0], bins=shared_bins, alpha=0.6, color='steelblue',  label='Noise (H0)')
+plt.hist(test_energy[test_labels == 1], bins=shared_bins, alpha=0.6, color='darkorange', label='Signal (H1)')
 plt.axvline(gamma, color='red', linestyle='--', label=f'γ (Pfa={target_pfa})')
 plt.xlabel('Energy Score  mean(I² + Q²)')
 plt.ylabel('Frequency')

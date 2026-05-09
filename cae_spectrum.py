@@ -53,9 +53,8 @@ class CAE(nn.Module):
             nn.Conv1d(8,   16, kernel_size=5, stride=1, padding=1),
             nn.ReLU(),
 
-            # Final output layer: sigmoid activation
+            # Linear output — no activation, allows full real range to match normalized input
             nn.Conv1d(16,  1,  kernel_size=5, stride=1, padding=1),
-            nn.Sigmoid(),
         )
 
     def encode(self, x):
