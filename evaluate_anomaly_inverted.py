@@ -289,7 +289,7 @@ target_pfa = 0.01
 gamma_psi  = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi
 gamma_base = mu_base + norm.ppf(1 - target_pfa) * sigma_base
 
-for snr_val in [-5, 0, 5]:
+for snr_val in [-6, 0, 6]:
     mask = (test_snr == snr_val)
     if mask.sum() == 0:
         print(f"No samples at SNR={snr_val:+d} dB, skipping.")

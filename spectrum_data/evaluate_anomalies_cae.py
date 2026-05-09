@@ -222,7 +222,7 @@ plt.close()
 target_pfa = 0.01
 gamma = mu_e + norm.ppf(target_pfa) * sigma_e
 
-for snr_val in [-5, 0, 5]:
+for snr_val in [-6, 0, 6]:
     mask = (test_snr == snr_val)
     if mask.sum() == 0:
         print(f"No samples at SNR={snr_val:+d} dB, skipping.")
