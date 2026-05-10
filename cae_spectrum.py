@@ -79,14 +79,8 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-# Load training noise (shape: [N, 2, 1024] — take channel 0 as 1-channel input)
-    train_noise = torch.load("spectrum_data/train_noise.pt", weights_only=False)
-    train_noise = train_noise[:, 0:1, :]   # (N, 1, 1024)
-
-    # Normalization removed — preserves energy/power information needed for anomaly detection
-    # min_val = train_noise.min()
-    # max_val = train_noise.max()
-    # train_noise = (train_noise - min_val) / (max_val - min_val + 1e-8)
+    train_noise = torch.load("spectrum_data/train_noise_raw.pt", weights_only=False)
+    train_noise = train_noise[:, 0:1, :]   # (N, 1, 1024) — unnormalized, preserves power
 
     # Split: 90% train, 10% validation (mirrors paper's 450k/50k split ratio)
     n_val   = int(0.1 * len(train_noise))

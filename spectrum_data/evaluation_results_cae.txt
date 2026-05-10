@@ -1,6 +1,6 @@
-=== EVALUATION RESULTS (Pablos et al. Step 3.3 - β + Neyman-Pearson) ===
-Date: 2026-05-08 22:44:40
+=== EVALUATION RESULTS (CAE — MSE Detection) ===
+Date: 2026-05-10 11:51:52
 
-CAE AUC: 0.0212
-CAE γ (P_fa=0.01): 0.0018
+CAE AUC: 0.6343
+CAE γ (P_fa=0.01): 1.061873
 CAE parameters: 52,977

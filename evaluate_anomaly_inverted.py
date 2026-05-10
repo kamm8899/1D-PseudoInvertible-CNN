@@ -305,6 +305,9 @@ for snr_val in [-6, 0, 6]:
         h0 = mask & (test_labels == 0)
         h1 = mask & (test_labels == 1)
 
+        beta_label = '(a)' if col == 0 else '(b)'
+        mse_label  = '(c)' if col == 0 else '(d)'
+
         # β row
         axes[0, col].hist(beta[h0], bins=40, alpha=0.6, color='steelblue',  label='Noise (H0)')
         axes[0, col].hist(beta[h1], bins=40, alpha=0.6, color='darkorange', label='Signal (H1)')
@@ -312,21 +315,36 @@ for snr_val in [-6, 0, 6]:
         axes[0, col].set_title(f'{name} — β Score')
         axes[0, col].set_xlabel('β')
         axes[0, col].set_ylabel('Frequency')
-        axes[0, col].legend()
+        axes[0, col].legend(fontsize=8)
         axes[0, col].grid(True)
+        axes[0, col].text(
+            0.5, -0.22,
+            f'{beta_label} {name} β score: reconstruction fidelity of H0 (noise)\n'
+            f'vs H1 (signal). Higher β = better reconstruction.',
+            transform=axes[0, col].transAxes,
+            ha='center', va='top', fontsize=8, style='italic'
+        )
 
         # MSE row
         mse = 1 - beta
         axes[1, col].hist(mse[h0], bins=40, alpha=0.6, color='steelblue',  label='Noise (H0)')
         axes[1, col].hist(mse[h1], bins=40, alpha=0.6, color='darkorange', label='Signal (H1)')
         axes[1, col].axvline(1 - gamma, color='red', linestyle='--', label='MSE threshold')
-        axes[1, col].set_title(f'{name} — MSE Score (1-β)')
+        axes[1, col].set_title(f'{name} — MSE Score (1−β)')
         axes[1, col].set_xlabel('MSE')
         axes[1, col].set_ylabel('Frequency')
-        axes[1, col].legend()
+        axes[1, col].legend(fontsize=8)
         axes[1, col].grid(True)
+        axes[1, col].text(
+            0.5, -0.22,
+            f'{mse_label} {name} MSE score (1−β): reconstruction error of H0 (noise)\n'
+            f'vs H1 (signal). Lower MSE = better reconstruction.',
+            transform=axes[1, col].transAxes,
+            ha='center', va='top', fontsize=8, style='italic'
+        )
 
     plt.tight_layout()
+    plt.subplots_adjust(hspace=0.55, wspace=0.3)
     plt.savefig(out_dir / f"snr_distributions_{snr_val:+d}dB.png", dpi=300, bbox_inches='tight')
     plt.close()
     print(f"Saved SNR={snr_val:+d} dB distribution plot.")
