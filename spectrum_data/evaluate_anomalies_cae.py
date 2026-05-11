@@ -56,25 +56,20 @@ mu_e, sigma_e = np.mean(train_beta), np.std(train_beta)
 print(f"CAE H0 β → mean = {mu_e:.4f},  std = {sigma_e:.4f}")
 
 # ====================== NEYMAN-PEARSON THRESHOLD γ ======================
-# CAE exhibits inverted behavior: signals reconstructed BETTER than noise → β > γ → anomaly
-# Upper tail: P_fa = P(β > γ | H0) = 1 - Φ((γ - μ) / σ) → γ = μ + Φ⁻¹(1 - P_fa)·σ
+# Paper eq (7): β < γ → anomaly, so γ is set below H0 mean
+# P_fa = P(β < γ | H0) = Φ((γ - μ) / σ) → γ = μ + Φ⁻¹(P_fa)·σ
+# For P_fa=0.01, Φ⁻¹(0.01) ≈ -2.33 → γ = μ - 2.33σ (below H0 mean)
 target_pfa = 0.01
-gamma = mu_e + norm.ppf(1 - target_pfa) * sigma_e
+gamma = mu_e + norm.ppf(target_pfa) * sigma_e
 print(f"Target P_fa = {target_pfa} → γ = {gamma:.4f}")
-
-# Previously used lower-tail (commented out) — broke Pd because signals have higher β than noise:
-# gamma = mu_e + norm.ppf(target_pfa) * sigma_e   # lower tail — gave Pd = 0
 
 # ====================== TEST SET EVALUATION ======================
 print("\nComputing β scores on test set...")
 beta_cae = compute_beta(model_cae, test_data)
 
-# ROC / AUC — upper tail: higher β = anomaly (signals reconstructed better than noise)
-fpr_cae, tpr_cae, thresholds_cae = roc_curve(test_labels, beta_cae)  # no negation — higher β = signal
+# ROC / AUC — paper: lower β = anomaly (β < γ → signal detected)
+fpr_cae, tpr_cae, thresholds_cae = roc_curve(test_labels, -beta_cae)  # negate: lower β = higher score
 auc_cae = auc(fpr_cae, tpr_cae)
-
-# Previously negated (lower-tail, commented out):
-# fpr_cae, tpr_cae, thresholds_cae = roc_curve(test_labels, -beta_cae)
 
 # Youden Index
 youden_cae = tpr_cae - fpr_cae
@@ -126,7 +121,7 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
     mask = (test_snr >= snr_low) & (test_snr < snr_high)
     if mask.sum() == 0:
         continue
-    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
+    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     label = f"[{snr_low:+d}, {snr_high:+d}) dB"
@@ -143,7 +138,7 @@ for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
     mask = (test_mods == mod) | (test_labels == 0)
     if mask.sum() == 0:
         continue
-    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
+    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     print(f"{mod:<16} {'CAE':<12} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
@@ -163,7 +158,7 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
     mask = (test_snr >= snr_low) & (test_snr < snr_high)
     if mask.sum() == 0:
         continue
-    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
+    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     label = f"[{snr_low:+d}, {snr_high:+d}) dB"
@@ -179,7 +174,7 @@ for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
     mask = (test_mods == mod) | (test_labels == 0)
     if mask.sum() == 0:
         continue
-    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
+    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     print(f"{mod:<16} {'CAE':<12} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
@@ -299,8 +294,7 @@ print(f"{'─'*45}")
 
 for snr_db in snr_points:
     sig_mask = (test_snr == snr_db) & (test_labels == 1)
-    pd_c = float(np.mean(beta_cae[sig_mask] > gamma)) if sig_mask.sum() > 0 else np.nan
-    # Previously lower-tail (commented out): np.mean(beta_cae[sig_mask] < gamma)
+    pd_c = float(np.mean(beta_cae[sig_mask] < gamma)) if sig_mask.sum() > 0 else np.nan
     pd_cae_arr.append(pd_c)
     print(f"{snr_db:>10d}  {pd_c:>10.4f}")
 
@@ -325,7 +319,7 @@ for mod in modulations_list:
         if mask.sum() == 0 or len(np.unique(test_labels[mask])) < 2:
             row += "    N/A"
             continue
-        fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
+        fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
         row += f"  {auc(fpr_s, tpr_s):.3f}"
     print(row)
 
