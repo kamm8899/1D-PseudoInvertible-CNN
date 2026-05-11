@@ -13,15 +13,17 @@ Run order — all three must be run before this file:
 import numpy as np
 import matplotlib.pyplot as plt
 
-snr_points = np.load("spectrum_data/snr_points.npy")
-pd_ed      = np.load("spectrum_data/pd_vs_snr_ed.npy")
-pd_cae     = np.load("spectrum_data/pd_vs_snr_cae.npy")
-pd_psinn   = np.load("spectrum_data/pd_vs_snr_psinn.npy")
+snr_points   = np.load("spectrum_data/snr_points.npy")
+pd_ed        = np.load("spectrum_data/pd_vs_snr_ed.npy")
+pd_cae       = np.load("spectrum_data/pd_vs_snr_cae.npy")
+pd_psinn     = np.load("spectrum_data/pd_vs_snr_psinn.npy")
+pd_baseline  = np.load("spectrum_data/pd_vs_snr_baseline.npy")
 
 plt.figure(figsize=(9, 6))
-plt.plot(snr_points, pd_ed,    marker='o', linewidth=2, label='Energy Detector')
-plt.plot(snr_points, pd_cae,   marker='s', linewidth=2, label='CAE (Baseline)')
-plt.plot(snr_points, pd_psinn, marker='^', linewidth=2, label='Psi-NN')
+#plt.plot(snr_points, pd_ed,       marker='o', linewidth=2, label='Energy Detector')
+plt.plot(snr_points, pd_cae,      marker='s', linewidth=2, label='CAE')
+plt.plot(snr_points, pd_psinn,    marker='^', linewidth=2, label='Psi-NN')
+plt.plot(snr_points, pd_baseline, marker='D', linewidth=2, label='Baseline AE')
 plt.xlabel('SNR (dB)')
 plt.ylabel('Pd  (Probability of Detection)')
 plt.title('Pd vs SNR  —  Pfa = 0.01')

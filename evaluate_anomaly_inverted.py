@@ -36,6 +36,8 @@ def compute_beta(model, data):
         for i in range(0, len(data), 128):
             batch = data[i:i+128].to(device)                    # (B, 2, 1024)
             recon = model.AE(batch)
+            if recon.shape[-1] != batch.shape[-1]:
+                recon = recon[..., :batch.shape[-1]]
 
             sse = torch.sum((batch - recon)**2, dim=[1, 2])
             mean_x = torch.mean(batch, dim=[1, 2], keepdim=True)

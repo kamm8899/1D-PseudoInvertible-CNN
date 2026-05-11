@@ -29,8 +29,10 @@ train_noise = train_noise_raw[:, 0:1, :]  # (N, 1, 1024)
 
 # ====================== LOAD MODEL ======================
 model_cae = CAE().to(device)
-model_cae.load_state_dict(torch.load("spectrum_data/cae_best.pth", weights_only=False))
+#model_cae.load_state_dict(torch.load("spectrum_data/cae_best.pth", weights_only=False))
+model_cae = CAE().to(device)   # fresh model with random weights
 model_cae.eval()
+
 
 def compute_beta(model, data):
     """Compute β (Coefficient of Determination) per sample - Eq. (5) in Pablos et al."""

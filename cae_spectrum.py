@@ -23,6 +23,7 @@ class CAE(nn.Module):
         # ── Encoder ───────────────────────────────────────────────────────────
         # Each layer: kernel=5, stride=2 → halves the sequence length
         # 1024 → 512 → 256 → 128
+        #change kernel size to 3 and add batchnorm to match paper architecture.
         self.encoder = nn.Sequential(
             nn.Conv1d(1,   16,  kernel_size=5, stride=2, padding=1),
             nn.BatchNorm1d(16),

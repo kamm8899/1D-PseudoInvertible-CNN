@@ -29,6 +29,8 @@ def train_ae(model, optimizer, scheduler, model_name, epochs):
         for (batch,) in train_loader:
             x = batch.to(device)
             recon = model.AE(x)
+            if recon.shape[-1] != x.shape[-1]:
+                recon = recon[..., :x.shape[-1]]
             loss = nn.MSELoss()(recon, x)
             optimizer.zero_grad()
             loss.backward()
@@ -51,8 +53,8 @@ for epochs in EPOCH_LIST:
     print(f"{'='*60}")
 
     # Fresh models every time
-    model_psi = AE_Classifier1d(n_channels=2, n_classes=1, nf=16, k=3, use_dropout=True).to(device)
-    model_base = AE_Baseline_Classifier1d(n_channels=2, n_classes=1, nf=16, k=3, use_dropout=True).to(device)
+    model_psi = AE_Classifier1d(n_channels=2, n_classes=1, nf=16, k=5, use_dropout=True).to(device)
+    model_base = AE_Baseline_Classifier1d(n_channels=2, n_classes=1, nf=16, k=5, use_dropout=True).to(device)
 
     optimizer_psi = torch.optim.Adam(model_psi.parameters(), lr=1e-3)
     optimizer_base = torch.optim.Adam(model_base.parameters(), lr=1e-3)

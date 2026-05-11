@@ -8,6 +8,7 @@ Date: April 2026
 import torch
 import numpy as np
 from pathlib import Path
+from scipy.signal import firwin, lfilter
 
 def add_awgn(signal: torch.Tensor, snr_db: float, noise_floor: float = 1.0) -> torch.Tensor:
     """Add AWGN with fixed noise floor matching training noise (power = noise_floor = 1.0).
@@ -30,18 +31,35 @@ def _make_signal(mod: str, length: int, _32qam_re, _32qam_im) -> torch.Tensor:
     if mod == 'qpsk':
         symbols = torch.tensor([1+1j, 1-1j, -1+1j, -1-1j])[torch.randint(0, 4, (length//8,))]
         signal  = torch.repeat_interleave(symbols, 8)
+        samples_per_symbol = 8
     elif mod == 'bpsk':
         symbols = torch.tensor([1, -1])[torch.randint(0, 2, (length//4,))]
         signal  = torch.repeat_interleave(symbols, 4) + 0j
+        samples_per_symbol = 4
     elif mod == '16qam':
         re = torch.tensor([-3, -1, 1, 3])[torch.randint(0, 4, (length//4,))]
         im = torch.tensor([-3, -1, 1, 3])[torch.randint(0, 4, (length//4,))]
         signal = torch.repeat_interleave(re + 1j * im, 4)
+        samples_per_symbol = 4
     else:  # 32-QAM cross constellation
         idx    = torch.randint(0, 32, (length//4,))
         signal = torch.repeat_interleave(_32qam_re[idx] + 1j * _32qam_im[idx], 4)
+        samples_per_symbol = 4
 
     iq = torch.stack([signal.real, signal.imag], dim=0).squeeze(1)
+
+    # Raised cosine pulse shaping — roll-off 0.35, added per professor guidance
+    # Smooths symbol transitions, making signals more realistic than rectangular pulses
+    num_taps = 8 * samples_per_symbol + 1
+    t        = np.arange(num_taps) - num_taps // 2
+    alpha    = 0.35
+    T        = samples_per_symbol
+    rc       = np.sinc(t / T) * np.cos(np.pi * alpha * t / T) / (1 - (2 * alpha * t / T) ** 2 + 1e-8)
+    rc      /= rc.sum()
+    signal_i = lfilter(rc, 1.0, iq[0].numpy())
+    signal_q = lfilter(rc, 1.0, iq[1].numpy())
+    iq       = torch.tensor(np.stack([signal_i, signal_q]), dtype=torch.float32)
+
     return iq / torch.abs(iq).max()
 
 
