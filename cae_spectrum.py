@@ -53,8 +53,11 @@ class CAE(nn.Module):
             nn.Conv1d(8,   16, kernel_size=5, stride=1, padding=1),
             nn.ReLU(),
 
-            # Linear output — no activation, allows full real range to match normalized input
+            # Final output layer: sigmoid activation (required — input is [0,1] normalized)
             nn.Conv1d(16,  1,  kernel_size=5, stride=1, padding=1),
+            nn.Sigmoid(),
+            # Previously removed (Linear output, no activation) — commented out below:
+            # nn.Conv1d(16,  1,  kernel_size=5, stride=1, padding=1),
         )
 
     def encode(self, x):
@@ -81,6 +84,13 @@ if __name__ == "__main__":
 
     train_noise = torch.load("spectrum_data/train_noise.pt", weights_only=False)
     train_noise = train_noise[:, 0:1, :]   # (N, 1, 1024)
+
+    # Normalize to [0, 1] for sigmoid output — model requires bounded input
+    min_val = train_noise.min()
+    max_val = train_noise.max()
+    train_noise = (train_noise - min_val) / (max_val - min_val + 1e-8)
+    # Previously removed normalization block — commented out above was:
+    # (no normalization — just loaded train_noise.pt directly)
 
     # Split: 90% train, 10% validation (mirrors paper's 450k/50k split ratio)
     n_val   = int(0.1 * len(train_noise))
