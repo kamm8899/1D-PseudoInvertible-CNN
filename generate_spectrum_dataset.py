@@ -10,14 +10,20 @@ import numpy as np
 from pathlib import Path
 
 def add_awgn(signal: torch.Tensor, snr_db: float, noise_floor: float = 1.0) -> torch.Tensor:
-    """Add AWGN with a fixed noise floor (power=1.0, matching training noise).
-    Scales the signal so SNR = signal_power / noise_floor = 10^(snr_db/10).
-    This keeps the noise model consistent with the unnormalized training noise used by the ED."""
-    target_signal_power = noise_floor * (10 ** (snr_db / 10.0))
+    """Add AWGN with fixed noise floor matching training noise (power = noise_floor = 1.0).
+    SNR = Psignal / Pnoise per professor guidance — signal rescaled, noise floor fixed."""
+    target_signal_power  = noise_floor * (10 ** (snr_db / 10.0))
     current_signal_power = torch.mean(signal ** 2)
     scaled_signal = signal * torch.sqrt(target_signal_power / (current_signal_power + 1e-8))
-    noise = torch.sqrt(torch.tensor(noise_floor / 2.0)) * torch.randn_like(signal)
+    noise = torch.sqrt(torch.tensor(noise_floor)) * torch.randn_like(signal)  # power = 1.0, matches training noise
     return scaled_signal + noise
+
+# Original relative-noise version (kept for reference — do not use):
+# def add_awgn(signal: torch.Tensor, snr_db: float) -> torch.Tensor:
+#     signal_power = torch.mean(signal ** 2)
+#     noise_power  = signal_power / (10 ** (snr_db / 10.0))
+#     noise = torch.sqrt(noise_power / 2.0) * torch.randn_like(signal)
+#     return signal + noise
 
 def _make_signal(mod: str, length: int, _32qam_re, _32qam_im) -> torch.Tensor:
     """Generate one normalized IQ signal for the given modulation."""
@@ -56,7 +62,9 @@ def generate_iq_dataset(
 
     # ── Training set ────────────────────────────────────────────────────────
     train_noise_raw = torch.randn(num_train, 2, length, dtype=torch.float32)
-    train_noise     = (train_noise_raw - train_noise_raw.mean()) / train_noise_raw.std()
+    mean            = train_noise_raw.mean(dim=[1, 2], keepdim=True)
+    std             = train_noise_raw.std(dim=[1, 2],  keepdim=True)
+    train_noise     = (train_noise_raw - mean) / (std + 1e-8)
 
     # ── Test set — fixed grid ────────────────────────────────────────────────
     # Professor Ask: "Make sure you have enough samples per modulation for each SNR, e.g. 200 samples each."
