@@ -11,6 +11,11 @@ Latent: (N, 128, 8)  — compressed representation (~128 values)
 Output: (N, 1, 1024) — reconstructed signal
 '''
 
+import os
+
+# macOS / conda: multiple OpenMP runtimes (PyTorch + NumPy/SciPy) can abort without this.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -129,7 +134,7 @@ if __name__ == "__main__":
                 val_loss += criterion(recon, x).item()
         val_loss /= len(val_loader)
 
-        print(f"Epoch {epoch+1:2d}/50 | Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f}")
+        print(f"Epoch {epoch+1:3d}/50 | Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f}")
 
         # Save best model (early stopping criterion from paper)
         if val_loss < best_val_loss:

@@ -2,6 +2,11 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# macOS / conda: multiple OpenMP runtimes (PyTorch + NumPy/SciPy) can abort without this.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
+from spectrum_paths import get_cae_test_data_path, assert_psinn_full_channel_metadata
+
 import torch
 import numpy as np
 from sklearn.metrics import roc_curve, auc
@@ -15,7 +20,11 @@ from cae_spectrum import CAE
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ====================== LOAD DATA ======================
-test_dict = torch.load("spectrum_data/test_data.pt", weights_only=False)
+_test_path = get_cae_test_data_path()
+test_dict = torch.load(_test_path, weights_only=False)
+assert_psinn_full_channel_metadata(test_dict)
+if test_dict.get("generation"):
+    print(f"Loaded test set {_test_path!r}  generation={test_dict['generation']}")
 test_data_raw = test_dict["data"]          # (N, 2, 1024)
 test_labels = test_dict["labels"].numpy()
 test_snr = test_dict["snrs"].numpy()
@@ -29,8 +38,8 @@ train_noise = train_noise_raw[:, 0:1, :]  # (N, 1, 1024)
 
 # ====================== LOAD MODEL ======================
 model_cae = CAE().to(device)
-#model_cae.load_state_dict(torch.load("spectrum_data/cae_best.pth", weights_only=False))
-model_cae = CAE().to(device)   # fresh model with random weights
+model_cae.load_state_dict(torch.load("spectrum_data/cae_best.pth", weights_only=False))
+#model_cae = CAE().to(device)   # fresh model with random weights
 model_cae.eval()
 
 
@@ -57,20 +66,19 @@ train_beta = compute_beta(model_cae, train_noise)
 mu_e, sigma_e = np.mean(train_beta), np.std(train_beta)
 print(f"CAE H0 β → mean = {mu_e:.4f},  std = {sigma_e:.4f}")
 
-# ====================== NEYMAN-PEARSON THRESHOLD γ ======================
-# Paper eq (7): β < γ → anomaly, so γ is set below H0 mean
-# P_fa = P(β < γ | H0) = Φ((γ - μ) / σ) → γ = μ + Φ⁻¹(P_fa)·σ
-# For P_fa=0.01, Φ⁻¹(0.01) ≈ -2.33 → γ = μ - 2.33σ (below H0 mean)
+# ====================== NEYMAN-PEARSON THRESHOLD γ (inverted, same as PsiNN + baseline) ======================
+# Signals reconstruct with higher β than noise under this CAE; anomaly = β > γ (upper tail on H0).
+# P_fa = P(β > γ | H0) = 1 - Φ((γ - μ)/σ)  →  γ = μ + Φ⁻¹(1 - P_fa)·σ
 target_pfa = 0.01
-gamma = mu_e + norm.ppf(target_pfa) * sigma_e
-print(f"Target P_fa = {target_pfa} → γ = {gamma:.4f}")
+gamma = mu_e + norm.ppf(1.0 - target_pfa) * sigma_e
+print(f"Target P_fa = {target_pfa} → γ (upper tail, β>γ detects signal) = {gamma:.4f}")
 
 # ====================== TEST SET EVALUATION ======================
 print("\nComputing β scores on test set...")
 beta_cae = compute_beta(model_cae, test_data)
 
-# ROC / AUC — paper: lower β = anomaly (β < γ → signal detected)
-fpr_cae, tpr_cae, thresholds_cae = roc_curve(test_labels, -beta_cae)  # negate: lower β = higher score
+# ROC / AUC — higher β = more like signal (same orientation as evaluate_anomaly_inverted.py)
+fpr_cae, tpr_cae, thresholds_cae = roc_curve(test_labels, beta_cae)
 auc_cae = auc(fpr_cae, tpr_cae)
 
 # Youden Index
@@ -93,7 +101,7 @@ for f in out_dir.glob("*.png"):
     f.unlink()
 
 with open("spectrum_data/evaluation_results_cae.txt", "w") as f:
-    f.write("=== EVALUATION RESULTS (Pablos et al. Step 3.3 - β + Neyman-Pearson) ===\n")
+    f.write("=== EVALUATION RESULTS — CAE (β, inverted: upper-tail γ, detect signal when β > γ; same as PsiNN/baseline) ===\n")
     f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
     f.write(f"CAE AUC: {auc_cae:.4f}\n")
     f.write(f"CAE γ (P_fa={target_pfa}): {gamma:.4f}\n")
@@ -123,7 +131,7 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
     mask = (test_snr >= snr_low) & (test_snr < snr_high)
     if mask.sum() == 0:
         continue
-    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
+    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     label = f"[{snr_low:+d}, {snr_high:+d}) dB"
@@ -140,7 +148,7 @@ for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
     mask = (test_mods == mod) | (test_labels == 0)
     if mask.sum() == 0:
         continue
-    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
+    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     print(f"{mod:<16} {'CAE':<12} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
@@ -148,7 +156,7 @@ for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
 
 # TPR for P_fa = 0.05
 target_pfa = 0.05
-gamma = mu_e + norm.ppf(target_pfa) * sigma_e
+gamma = mu_e + norm.ppf(1.0 - target_pfa) * sigma_e
 print(f"\nTarget P_fa = {target_pfa} → γ = {gamma:.4f}")
 
 print(f"\n{'='*60}")
@@ -160,7 +168,7 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
     mask = (test_snr >= snr_low) & (test_snr < snr_high)
     if mask.sum() == 0:
         continue
-    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
+    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     label = f"[{snr_low:+d}, {snr_high:+d}) dB"
@@ -176,7 +184,7 @@ for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
     mask = (test_mods == mod) | (test_labels == 0)
     if mask.sum() == 0:
         continue
-    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
+    fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     print(f"{mod:<16} {'CAE':<12} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
@@ -184,12 +192,12 @@ for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
 
 # ====================== DISTRIBUTION PLOTS ======================
 target_pfa = 0.01
-gamma = mu_e + norm.ppf(target_pfa) * sigma_e
+gamma = mu_e + norm.ppf(1.0 - target_pfa) * sigma_e
 
 plt.figure(figsize=(8,6))
 plt.hist(beta_cae[test_labels==0], bins=50, alpha=0.5, label='CAE Noise (H0)')
 plt.hist(beta_cae[test_labels==1], bins=50, alpha=0.5, label='CAE Signal (H1)')
-plt.axvline(gamma, color='red', linestyle='--', label=f'CAE γ (P_fa={target_pfa})')
+plt.axvline(gamma, color='red', linestyle='--', label=f'γ upper tail (signal if β > γ, P_fa={target_pfa})')
 plt.xlabel('β Score')
 plt.ylabel('Frequency')
 plt.title('Distribution of β Scores - CAE')
@@ -202,7 +210,7 @@ mse_cae = 1 - beta_cae
 plt.figure(figsize=(8,6))
 plt.hist(mse_cae[test_labels==0], bins=50, alpha=0.5, label='CAE Noise (H0)')
 plt.hist(mse_cae[test_labels==1], bins=50, alpha=0.5, label='CAE Signal (H1)')
-plt.axvline(1 - gamma, color='red', linestyle='--', label=f'CAE Threshold (P_fa={target_pfa})')
+plt.axvline(1 - gamma, color='red', linestyle='--', label=f'MSE threshold (signal if MSE < 1−γ, P_fa={target_pfa})')
 plt.xlabel('MSE Score (1 - β)')
 plt.ylabel('Frequency')
 plt.title('Distribution of MSE Scores - CAE')
@@ -213,27 +221,20 @@ plt.close()
 
 # ====================== β/MSE DISTRIBUTIONS AT -6, 0, +6 dB ======================
 target_pfa = 0.01
-gamma = mu_e + norm.ppf(target_pfa) * sigma_e
+gamma = mu_e + norm.ppf(1.0 - target_pfa) * sigma_e
 
 snr_descriptions = {
     -6: (
-        'H₁ spreads broadly above H₀, with slight overlap. '
-        'γ sits left of both — no signal is detected.',
-        'H₁ occupies a lower MSE region than H₀, '
-        'confirming signals are reconstructed more accurately even at low SNR.'
+        'H₁ β tends higher than H₀; γ is an upper tail on H₀ (β > γ → signal).',
+        'MSE = 1−β: signals sit lower MSE than noise when reconstruction differs.',
     ),
-     0: (
-        'H₁ has shifted fully right of H₀ with no overlap. '
-        'γ remains far left — the inversion is fully established.',
-        'Clear separation: H₁ occupies a distinctly lower MSE range, '
-        'while H₀ stays concentrated near MSE ≈0.97.'
+    0: (
+        'H₁ separated toward higher β; threshold γ from training H₀ upper tail.',
+        'MSE distributions: H₁ shifted toward lower MSE vs H₀ when separable.',
     ),
-     6: (
-        'H₁ spreads far right, reaching β≈0.35. '
-        'The gap from H₀ is the widest across all SNR levels — '
-        'stronger signals are reconstructed even more accurately.',
-        'H₁ extends to MSE≈0.65, far below H₀. '
-        'The stronger the signal, the lower its MSE and the worse the detection.'
+    6: (
+        'Higher SNR: H₁ β extends further above typical H₀ β.',
+        'MSE: stronger signals often reconstruct with lower residual MSE.',
     ),
 }
 
@@ -253,7 +254,7 @@ for snr_val in [-6, 0, 6]:
 
     axes[0].hist(beta_cae[h0], bins=40, alpha=0.6, color='steelblue',  label='Noise (H0)')
     axes[0].hist(beta_cae[h1], bins=40, alpha=0.6, color='darkorange', label='Signal (H1)')
-    axes[0].axvline(gamma, color='red', linestyle='--', label='γ threshold')
+    axes[0].axvline(gamma, color='red', linestyle='--', label='γ (signal if β > γ)')
     axes[0].set_title('CAE — β Score')
     axes[0].set_xlabel('β')
     axes[0].set_ylabel('Frequency')
@@ -266,7 +267,7 @@ for snr_val in [-6, 0, 6]:
     mse_snr = 1 - beta_cae
     axes[1].hist(mse_snr[h0], bins=40, alpha=0.6, color='steelblue',  label='Noise (H0)')
     axes[1].hist(mse_snr[h1], bins=40, alpha=0.6, color='darkorange', label='Signal (H1)')
-    axes[1].axvline(1 - gamma, color='red', linestyle='--', label='MSE threshold')
+    axes[1].axvline(1 - gamma, color='red', linestyle='--', label='MSE threshold (signal if MSE < 1−γ)')
     axes[1].set_title('CAE — MSE Score (1-β)')
     axes[1].set_xlabel('MSE')
     axes[1].set_ylabel('Frequency')
@@ -284,19 +285,19 @@ for snr_val in [-6, 0, 6]:
 
 # ====================== Pd vs SNR (Pfa = 0.01) ======================
 target_pfa = 0.01
-gamma      = mu_e + norm.ppf(target_pfa) * sigma_e
+gamma      = mu_e + norm.ppf(1.0 - target_pfa) * sigma_e
 
 snr_points = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10]
 pd_cae_arr = []
 
 print(f"\n{'='*45}")
-print(f"Pd vs SNR  (Pfa = {target_pfa})")
+print(f"Pd vs SNR  (Pfa = {target_pfa}, detect when β > γ)")
 print(f"{'SNR (dB)':>10}  {'CAE Pd':>10}")
 print(f"{'─'*45}")
 
 for snr_db in snr_points:
     sig_mask = (test_snr == snr_db) & (test_labels == 1)
-    pd_c = float(np.mean(beta_cae[sig_mask] < gamma)) if sig_mask.sum() > 0 else np.nan
+    pd_c = float(np.mean(beta_cae[sig_mask] > gamma)) if sig_mask.sum() > 0 else np.nan
     pd_cae_arr.append(pd_c)
     print(f"{snr_db:>10d}  {pd_c:>10.4f}")
 
@@ -321,7 +322,7 @@ for mod in modulations_list:
         if mask.sum() == 0 or len(np.unique(test_labels[mask])) < 2:
             row += "    N/A"
             continue
-        fpr_s, tpr_s, _ = roc_curve(test_labels[mask], -beta_cae[mask])
+        fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
         row += f"  {auc(fpr_s, tpr_s):.3f}"
     print(row)
 

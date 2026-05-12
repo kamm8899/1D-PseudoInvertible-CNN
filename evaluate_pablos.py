@@ -9,8 +9,15 @@ Run order:
     plot_pd_vs_snr.py       → pd_vs_snr_combined.png
 '''
 
+import os
+
+# macOS / conda: multiple OpenMP runtimes (PyTorch + NumPy/SciPy) can abort without this.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import torch
 import numpy as np
+
+from spectrum_paths import get_psinn_test_data_path, assert_psinn_full_channel_metadata
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -22,7 +29,11 @@ from psinn_layer_1d_pablos import AE_Pablos1d
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ====================== LOAD DATA (I channel only) ======================
-test_dict   = torch.load("spectrum_data/test_data.pt", weights_only=False)
+_psinn_test_path = get_psinn_test_data_path()
+test_dict   = torch.load(_psinn_test_path, weights_only=False)
+assert_psinn_full_channel_metadata(test_dict)
+if test_dict.get("generation"):
+    print(f"Loaded Pablos test set {_psinn_test_path!r}  generation={test_dict['generation']}")
 test_data   = test_dict["data"][:, 0:1, :]        # (N, 1, 1024)
 test_labels = test_dict["labels"].numpy()
 test_snr    = test_dict["snrs"].numpy()

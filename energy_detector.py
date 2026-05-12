@@ -14,8 +14,15 @@ Threshold set via Neyman-Pearson criterion on unnormalized training noise (H0).
 Higher energy → signal present (H1).
 '''
 
+import os
+
+# macOS / conda: multiple OpenMP runtimes (PyTorch + NumPy/SciPy) can abort without this.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import torch
 import numpy as np
+
+from spectrum_paths import get_psinn_test_data_raw_path, assert_psinn_full_channel_metadata
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -26,7 +33,11 @@ from scipy.stats import norm
 train_noise_raw = torch.load("spectrum_data/train_noise_raw.pt", weights_only=False)  # (N, 2, 1024)
 
 # Unnormalized test data — per-sample normalization would destroy power info
-test_dict = torch.load("spectrum_data/test_data_raw.pt", weights_only=False)
+_psinn_raw_path = get_psinn_test_data_raw_path()
+test_dict = torch.load(_psinn_raw_path, weights_only=False)
+assert_psinn_full_channel_metadata(test_dict)
+if test_dict.get("generation"):
+    print(f"Loaded ED raw test {_psinn_raw_path!r}  generation={test_dict['generation']}")
 test_data_raw = test_dict["data"]          # (N, 2, 1024)
 test_labels   = test_dict["labels"].numpy()
 test_snr      = test_dict["snrs"].numpy()

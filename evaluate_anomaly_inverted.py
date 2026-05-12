@@ -1,5 +1,12 @@
+import os
+
+# macOS / conda: multiple OpenMP runtimes (PyTorch + NumPy/SciPy) can abort without this.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import torch
 import numpy as np
+
+from spectrum_paths import get_psinn_test_data_path, assert_psinn_full_channel_metadata
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -11,7 +18,11 @@ from psinn_layer_1d import AE_Classifier1d, AE_Baseline_Classifier1d
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ====================== LOAD DATA ======================
-test_dict = torch.load("spectrum_data/test_data.pt", weights_only=False)
+_psinn_test_path = get_psinn_test_data_path()
+test_dict = torch.load(_psinn_test_path, weights_only=False)
+assert_psinn_full_channel_metadata(test_dict)
+if test_dict.get("generation"):
+    print(f"Loaded PsiNN test set {_psinn_test_path!r}  generation={test_dict['generation']}")
 test_data = test_dict["data"]
 test_labels = test_dict["labels"].numpy()
 test_snr = test_dict["snrs"].numpy()
@@ -21,8 +32,8 @@ test_mods = np.array(test_dict["signals"])  # convert to array so boolean indexi
 train_noise = torch.load("spectrum_data/train_noise.pt", weights_only=False)  # plain tensor
 
 # ====================== LOAD MODELS ======================
-model_psi = AE_Classifier1d(n_channels=2, n_classes=1, nf=16, k=3, use_dropout=True).to(device)
-model_base = AE_Baseline_Classifier1d(n_channels=2, n_classes=1, nf=16, k=3, use_dropout=True).to(device)
+model_psi = AE_Classifier1d(n_channels=2, n_classes=1, nf=16, k=5, use_dropout=True).to(device)
+model_base = AE_Baseline_Classifier1d(n_channels=2, n_classes=1, nf=16, k=5, use_dropout=True).to(device)
 
 model_psi.load_state_dict(torch.load("spectrum_data/psl_cnn_200epochs.pth", weights_only=False))
 model_base.load_state_dict(torch.load("spectrum_data/baseline_200epochs.pth", weights_only=False))

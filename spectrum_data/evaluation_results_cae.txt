@@ -1,6 +1,6 @@
-=== EVALUATION RESULTS (Pablos et al. Step 3.3 - β + Neyman-Pearson) ===
-Date: 2026-05-11 14:34:39
+=== EVALUATION RESULTS — CAE (β, inverted: upper-tail γ, detect signal when β > γ; same as PsiNN/baseline) ===
+Date: 2026-05-12 18:15:27
 
-CAE AUC: 0.5611
-CAE γ (P_fa=0.01): -0.0030
-CAE parameters: 32,049
+CAE AUC: 0.9848
+CAE γ (P_fa=0.01): 0.0564
+CAE parameters: 52,977

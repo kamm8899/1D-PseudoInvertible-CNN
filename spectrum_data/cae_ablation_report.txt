@@ -1,0 +1,49 @@
+==============================================================================
+CAE ABLATION REPORT — one checkpoint, four test-channel conditions
+Generated: 2026-05-12 14:15:58
+Device: cpu
+Weights: spectrum_data/cae_best.pth
+Target P_fa (gamma, Pd vs SNR): 0.01
+SNR uncertainty half-width (cases 2 & 4): 2.0 dB
+==============================================================================
+
+Case 1 — Ideal (no pulse shaping, no SNR uncertainty).
+  File: test_data_ideal.pt
+  generation: {'use_pulse_shaping': False, 'snr_uncertainty_db': 0.0}
+  H0 β: mean=0.053082  std=0.010121
+  γ (P_fa=0.01): 0.029537
+  Test AUC (β, anomaly = low β): 0.042496
+  Pd vs nominal SNR (H1, β < γ):
+         -10      -8      -6      -4      -2       0       2       4       6       8      10
+      0.0025  0.0025  0.0000  0.0000  0.0000  0.0000  0.0000  0.0013  0.0000  0.0013  0.0000
+
+Case 2 — SNR uncertainty only (no pulse shaping).
+  File: test_data_uncert.pt
+  generation: {'use_pulse_shaping': False, 'snr_uncertainty_db': 2.0}
+  H0 β: mean=0.053082  std=0.010121
+  γ (P_fa=0.01): 0.029537
+  Test AUC (β, anomaly = low β): 0.042720
+  Pd vs nominal SNR (H1, β < γ):
+         -10      -8      -6      -4      -2       0       2       4       6       8      10
+      0.0000  0.0013  0.0013  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0025
+
+Case 3 — Pulse shaping, no SNR uncertainty.
+  File: test_data_pulse.pt
+  generation: {'use_pulse_shaping': True, 'snr_uncertainty_db': 0.0}
+  H0 β: mean=0.053082  std=0.010121
+  γ (P_fa=0.01): 0.029537
+  Test AUC (β, anomaly = low β): 0.027809
+  Pd vs nominal SNR (H1, β < γ):
+         -10      -8      -6      -4      -2       0       2       4       6       8      10
+      0.0013  0.0000  0.0025  0.0000  0.0013  0.0000  0.0013  0.0000  0.0000  0.0063  0.0025
+
+Case 4 — Full channel (pulse shaping + SNR uncertainty).
+  File: test_data_full.pt
+  generation: {'use_pulse_shaping': True, 'snr_uncertainty_db': 2.0}
+  H0 β: mean=0.053082  std=0.010121
+  γ (P_fa=0.01): 0.029537
+  Test AUC (β, anomaly = low β): 0.031660
+  Pd vs nominal SNR (H1, β < γ):
+         -10      -8      -6      -4      -2       0       2       4       6       8      10
+      0.0025  0.0013  0.0000  0.0000  0.0000  0.0000  0.0000  0.0013  0.0025  0.0025  0.0050
+

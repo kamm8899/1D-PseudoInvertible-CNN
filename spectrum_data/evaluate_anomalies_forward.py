@@ -2,6 +2,11 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# macOS / conda: multiple OpenMP runtimes (PyTorch + NumPy/SciPy) can abort without this.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
+from spectrum_paths import get_psinn_test_data_path, assert_psinn_full_channel_metadata
+
 import torch
 import numpy as np
 from sklearn.metrics import roc_curve, auc
@@ -15,7 +20,11 @@ from psinn_layer_1d import AE_Classifier1d, AE_Baseline_Classifier1d
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ====================== LOAD DATA ======================
-test_dict = torch.load("spectrum_data/test_data.pt", weights_only=False)
+_psinn_test_path = get_psinn_test_data_path()
+test_dict = torch.load(_psinn_test_path, weights_only=False)
+assert_psinn_full_channel_metadata(test_dict)
+if test_dict.get("generation"):
+    print(f"Loaded PsiNN (forward) test set {_psinn_test_path!r}  generation={test_dict['generation']}")
 test_data = test_dict["data"]
 test_labels = test_dict["labels"].numpy()
 test_snr = test_dict["snrs"].numpy()

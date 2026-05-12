@@ -1,7 +1,12 @@
 import torch
 
+from spectrum_paths import get_psinn_test_data_path, assert_psinn_full_channel_metadata
+from psinn_layer_1d import AE_Classifier1d
+
 # Load test data and the trained Psl-CNN model
-test_dict = torch.load("spectrum_data/test_data.pt")
+_psinn_test_path = get_psinn_test_data_path()
+test_dict = torch.load(_psinn_test_path)
+assert_psinn_full_channel_metadata(test_dict)
 test_data = test_dict["data"]
 test_labels = test_dict["labels"]   # 0 = noise, 1 = anomaly
 
