@@ -13,6 +13,8 @@ from pathlib import Path
 import time
 from scipy.stats import norm   # for Q^{-1}(P_fa)
 
+from experiment_labels import ROC_CONV_AE_BASELINE, ROC_PSL_CNN, TABLE_CONV_AE_BASELINE, TABLE_PSL_CNN
+
 from psinn_layer_1d import AE_Classifier1d, AE_Baseline_Classifier1d
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -65,23 +67,33 @@ train_beta_base = compute_beta(model_base, train_noise)
 
 mu_psi,  sigma_psi  = np.mean(train_beta_psi),  np.std(train_beta_psi)
 mu_base, sigma_base = np.mean(train_beta_base), np.std(train_beta_base)
-print(f"Psl-CNN  H0 β → mean = {mu_psi:.4f},  std = {sigma_psi:.4f}")
-print(f"Baseline H0 β → mean = {mu_base:.4f}, std = {sigma_base:.4f}")
+print(f"{TABLE_PSL_CNN} H0 β → mean = {mu_psi:.4f},  std = {sigma_psi:.4f}")
+print(f"{TABLE_CONV_AE_BASELINE} H0 β → mean = {mu_base:.4f}, std = {sigma_base:.4f}")
 
 # ====================== NEYMAN-PEARSON THRESHOLD γ ======================
+# Mixed tails (same P_fa for both): Psl-CNN = upper (β > γ → anomaly, ROC on +β);
+# Baseline AE = lower (β < γ → anomaly, ROC on −β).
+# --- Both lower (commented):
+# gamma_psi  = mu_psi  + norm.ppf(target_pfa) * sigma_psi
+# gamma_base = mu_base + norm.ppf(target_pfa) * sigma_base
+# --- Both upper (commented):
+# gamma_psi  = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi
+# gamma_base = mu_base + norm.ppf(1 - target_pfa) * sigma_base
 target_pfa = 0.01
-gamma_psi  = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi   # upper tail: β > γ → anomaly
-gamma_base = mu_base + norm.ppf(1 - target_pfa) * sigma_base
-print(f"Target P_fa = {target_pfa} → γ Psl-CNN = {gamma_psi:.4f}, γ Baseline = {gamma_base:.4f}")
+gamma_psi  = mu_psi  + norm.ppf(1.0 - target_pfa) * sigma_psi
+gamma_base = mu_base + norm.ppf(target_pfa) * sigma_base
+print(f"Target P_fa = {target_pfa} → γ {TABLE_PSL_CNN} (upper) = {gamma_psi:.4f}, γ {TABLE_CONV_AE_BASELINE} (lower) = {gamma_base:.4f}")
 
 # ====================== TEST SET EVALUATION ======================
 print("\nComputing β scores on test set...")
 beta_psi = compute_beta(model_psi, test_data)
 beta_base = compute_beta(model_base, test_data)
 
-# ROC / AUC (higher β = anomaly — model reconstructs signals better than noise)
+# ROC / AUC — Psl-CNN upper tail (+β); Baseline lower tail (−β)
+# fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels, -beta_psi)
+# fpr_base, tpr_base, thresholds_base = roc_curve(test_labels, beta_base)
 fpr_psi,  tpr_psi,  thresholds_psi  = roc_curve(test_labels, beta_psi)
-fpr_base, tpr_base, thresholds_base = roc_curve(test_labels, beta_base)
+fpr_base, tpr_base, thresholds_base = roc_curve(test_labels, -beta_base)
 auc_psi  = auc(fpr_psi,  tpr_psi)
 auc_base = auc(fpr_base, tpr_base)
 
@@ -101,11 +113,11 @@ param_psi  = sum(p.numel() for p in model_psi.parameters())
 param_base = sum(p.numel() for p in model_base.parameters())
 
 print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"Psl-CNN  AUC: {auc_psi:.4f}  γ = {gamma_psi:.4f}  params = {param_psi:,}")
-print(f"Baseline AUC: {auc_base:.4f}  γ = {gamma_base:.4f}  params = {param_base:,}")
+print(f"{TABLE_PSL_CNN}  AUC: {auc_psi:.4f}  γ = {gamma_psi:.4f}  params = {param_psi:,}")
+print(f"{TABLE_CONV_AE_BASELINE} AUC: {auc_base:.4f}  γ = {gamma_base:.4f}  params = {param_base:,}")
 print(f"\n=== YOUDEN INDEX (Optimal Pfa) ===")
-print(f"Psl-CNN  optimal Pfa = {optimal_pfa_psi:.4f}  TPR = {optimal_tpr_psi:.4f}  Youden = {youden_psi[best_idx_psi]:.4f}")
-print(f"Baseline optimal Pfa = {optimal_pfa_base:.4f}  TPR = {optimal_tpr_base:.4f}  Youden = {youden_base[best_idx_base]:.4f}")
+print(f"{TABLE_PSL_CNN}  optimal Pfa = {optimal_pfa_psi:.4f}  TPR = {optimal_tpr_psi:.4f}  Youden = {youden_psi[best_idx_psi]:.4f}")
+print(f"{TABLE_CONV_AE_BASELINE} optimal Pfa = {optimal_pfa_base:.4f}  TPR = {optimal_tpr_base:.4f}  Youden = {youden_base[best_idx_base]:.4f}")
 
 # Save results
 out_dir = Path("anomalies_Psi-NN_inverted")
@@ -116,19 +128,19 @@ for f in out_dir.glob("*.png"):
 with open("spectrum_data/evaluation_results.txt", "w") as f:
     f.write("=== EVALUATION RESULTS (Pablos et al. Step 3.3 - β + Neyman-Pearson) ===\n")
     f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-    f.write(f"Psl-CNN AUC: {auc_psi:.4f}\n")
-    f.write(f"Baseline AUC: {auc_base:.4f}\n")
-    f.write(f"Psl-CNN  γ (P_fa={target_pfa}): {gamma_psi:.4f}\n")
-    f.write(f"Baseline γ (P_fa={target_pfa}): {gamma_base:.4f}\n")
-    f.write(f"Psl-CNN parameters: {param_psi:,}\n")
-    f.write(f"Baseline parameters: {param_base:,}\n")
+    f.write(f"{TABLE_PSL_CNN} AUC: {auc_psi:.4f}\n")
+    f.write(f"{TABLE_CONV_AE_BASELINE} AUC: {auc_base:.4f}\n")
+    f.write(f"{TABLE_PSL_CNN}  γ (P_fa={target_pfa}): {gamma_psi:.4f}\n")
+    f.write(f"{TABLE_CONV_AE_BASELINE} γ (P_fa={target_pfa}): {gamma_base:.4f}\n")
+    f.write(f"{TABLE_PSL_CNN} parameters: {param_psi:,}\n")
+    f.write(f"{TABLE_CONV_AE_BASELINE} parameters: {param_base:,}\n")
 
 # ROC plot
 plt.figure(figsize=(8,6))
-plt.plot(fpr_psi,  tpr_psi,  label=f'1D Psl-CNN (AUC = {auc_psi:.3f})')
-plt.plot(fpr_base, tpr_base, label=f'Baseline  (AUC = {auc_base:.3f})')
-plt.scatter(optimal_pfa_psi,  optimal_tpr_psi,  marker='*', s=200, color='blue',   zorder=5, label=f'Psl-CNN  Youden (Pfa={optimal_pfa_psi:.3f})')
-plt.scatter(optimal_pfa_base, optimal_tpr_base, marker='*', s=200, color='orange', zorder=5, label=f'Baseline Youden (Pfa={optimal_pfa_base:.3f})')
+plt.plot(fpr_psi,  tpr_psi,  label=f'{ROC_PSL_CNN} (AUC = {auc_psi:.3f})')
+plt.plot(fpr_base, tpr_base, label=f'{ROC_CONV_AE_BASELINE} (AUC = {auc_base:.3f})')
+plt.scatter(optimal_pfa_psi,  optimal_tpr_psi,  marker='*', s=200, color='blue',   zorder=5, label=f'{ROC_PSL_CNN} Youden (Pfa={optimal_pfa_psi:.3f})')
+plt.scatter(optimal_pfa_base, optimal_tpr_base, marker='*', s=200, color='orange', zorder=5, label=f'{ROC_CONV_AE_BASELINE} Youden (Pfa={optimal_pfa_base:.3f})')
 plt.plot([0,1], [0,1], 'k--')
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
@@ -143,7 +155,7 @@ print("✅ Evaluation complete! Results saved in spectrum_data/")
 # TPR by SNR range (P_fa = 0.01)
 print(f"\n{'='*70}")
 print(f"TPR BY SNR RANGE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
-print(f"{'SNR Range':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
+print(f"{'SNR Range':<16} {'Model':<18} {'AUC':>6}  {'TPR@γ':>8}")
 print(f"{'─'*70}")
 
 for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
@@ -151,20 +163,20 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
     if mask.sum() == 0:
         continue
     fpr_p, tpr_p, _ = roc_curve(test_labels[mask], beta_psi[mask])
-    fpr_b, tpr_b, _ = roc_curve(test_labels[mask], beta_base[mask])
+    fpr_b, tpr_b, _ = roc_curve(test_labels[mask], -beta_base[mask])
     auc_p = auc(fpr_p, tpr_p)
     auc_b = auc(fpr_b, tpr_b)
     tpr_p_at_g = tpr_p[np.searchsorted(fpr_p, target_pfa, side='right') - 1]
     tpr_b_at_g = tpr_b[np.searchsorted(fpr_b, target_pfa, side='right') - 1]
     label = f"[{snr_low:+d}, {snr_high:+d}) dB"
-    print(f"{label:<16} {'Psl-CNN':<12} {auc_p:>6.4f}  {tpr_p_at_g:>8.4f}")
-    print(f"{'':16} {'Baseline':<12} {auc_b:>6.4f}  {tpr_b_at_g:>8.4f}")
+    print(f"{label:<16} {TABLE_PSL_CNN:<18} {auc_p:>6.4f}  {tpr_p_at_g:>8.4f}")
+    print(f"{'':16} {TABLE_CONV_AE_BASELINE:<18} {auc_b:>6.4f}  {tpr_b_at_g:>8.4f}")
     print(f"{'─'*70}")
 
 # TPR by modulation type (P_fa = 0.01)
 print(f"\n{'='*70}")
 print(f"TPR BY MODULATION TYPE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
-print(f"{'Modulation':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
+print(f"{'Modulation':<16} {'Model':<18} {'AUC':>6}  {'TPR@γ':>8}")
 print(f"{'─'*70}")
 
 for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
@@ -173,25 +185,25 @@ for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
     if mask.sum() == 0:
         continue
     fpr_p, tpr_p, _ = roc_curve(test_labels[mask], beta_psi[mask])
-    fpr_b, tpr_b, _ = roc_curve(test_labels[mask], beta_base[mask])
+    fpr_b, tpr_b, _ = roc_curve(test_labels[mask], -beta_base[mask])
     auc_p = auc(fpr_p, tpr_p)
     auc_b = auc(fpr_b, tpr_b)
     tpr_p_at_g = tpr_p[np.searchsorted(fpr_p, target_pfa, side='right') - 1]
     tpr_b_at_g = tpr_b[np.searchsorted(fpr_b, target_pfa, side='right') - 1]
-    print(f"{mod:<16} {'Psl-CNN':<12} {auc_p:>6.4f}  {tpr_p_at_g:>8.4f}")
-    print(f"{'':16} {'Baseline':<12} {auc_b:>6.4f}  {tpr_b_at_g:>8.4f}")
+    print(f"{mod:<16} {TABLE_PSL_CNN:<18} {auc_p:>6.4f}  {tpr_p_at_g:>8.4f}")
+    print(f"{'':16} {TABLE_CONV_AE_BASELINE:<18} {auc_b:>6.4f}  {tpr_b_at_g:>8.4f}")
     print(f"{'─'*70}")
 
-# TPR for P_fa = 0.05
+# TPR for P_fa = 0.05 (same mixed tails as P_fa=0.01 block above)
 target_pfa = 0.05
-gamma_psi  = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi
-gamma_base = mu_base + norm.ppf(1 - target_pfa) * sigma_base
-print(f"Target P_fa = {target_pfa} → γ Psl-CNN = {gamma_psi:.4f}, γ Baseline = {gamma_base:.4f}")
+gamma_psi  = mu_psi  + norm.ppf(1.0 - target_pfa) * sigma_psi
+gamma_base = mu_base + norm.ppf(target_pfa) * sigma_base
+print(f"Target P_fa = {target_pfa} → γ {TABLE_PSL_CNN} = {gamma_psi:.4f}, γ {TABLE_CONV_AE_BASELINE} = {gamma_base:.4f}")
 
 # TPR by SNR range (P_fa = 0.05)
 print(f"\n{'='*70}")
 print(f"TPR BY SNR RANGE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
-print(f"{'SNR Range':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
+print(f"{'SNR Range':<16} {'Model':<18} {'AUC':>6}  {'TPR@γ':>8}")
 print(f"{'─'*70}")
 
 for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
@@ -199,20 +211,20 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
     if mask.sum() == 0:
         continue
     fpr_p, tpr_p, _ = roc_curve(test_labels[mask], beta_psi[mask])
-    fpr_b, tpr_b, _ = roc_curve(test_labels[mask], beta_base[mask])
+    fpr_b, tpr_b, _ = roc_curve(test_labels[mask], -beta_base[mask])
     auc_p = auc(fpr_p, tpr_p)
     auc_b = auc(fpr_b, tpr_b)
     tpr_p_at_g = tpr_p[np.searchsorted(fpr_p, target_pfa, side='right') - 1]
     tpr_b_at_g = tpr_b[np.searchsorted(fpr_b, target_pfa, side='right') - 1]
     label = f"[{snr_low:+d}, {snr_high:+d}) dB"
-    print(f"{label:<16} {'Psl-CNN':<12} {auc_p:>6.4f}  {tpr_p_at_g:>8.4f}")
-    print(f"{'':16} {'Baseline':<12} {auc_b:>6.4f}  {tpr_b_at_g:>8.4f}")
+    print(f"{label:<16} {TABLE_PSL_CNN:<18} {auc_p:>6.4f}  {tpr_p_at_g:>8.4f}")
+    print(f"{'':16} {TABLE_CONV_AE_BASELINE:<18} {auc_b:>6.4f}  {tpr_b_at_g:>8.4f}")
     print(f"{'─'*70}")
 
 # TPR by modulation type (P_fa = 0.05)
 print(f"\n{'='*70}")
 print(f"TPR BY MODULATION TYPE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
-print(f"{'Modulation':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
+print(f"{'Modulation':<16} {'Model':<18} {'AUC':>6}  {'TPR@γ':>8}")
 print(f"{'─'*70}")
 
 for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
@@ -221,31 +233,28 @@ for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
     if mask.sum() == 0:
         continue
     fpr_p, tpr_p, _ = roc_curve(test_labels[mask], beta_psi[mask])
-    fpr_b, tpr_b, _ = roc_curve(test_labels[mask], beta_base[mask])
+    fpr_b, tpr_b, _ = roc_curve(test_labels[mask], -beta_base[mask])
     auc_p = auc(fpr_p, tpr_p)
     auc_b = auc(fpr_b, tpr_b)
     tpr_p_at_g = tpr_p[np.searchsorted(fpr_p, target_pfa, side='right') - 1]
     tpr_b_at_g = tpr_b[np.searchsorted(fpr_b, target_pfa, side='right') - 1]
-    print(f"{mod:<16} {'Psl-CNN':<12} {auc_p:>6.4f}  {tpr_p_at_g:>8.4f}")
-    print(f"{'':16} {'Baseline':<12} {auc_b:>6.4f}  {tpr_b_at_g:>8.4f}")
+    print(f"{mod:<16} {TABLE_PSL_CNN:<18} {auc_p:>6.4f}  {tpr_p_at_g:>8.4f}")
+    print(f"{'':16} {TABLE_CONV_AE_BASELINE:<18} {auc_b:>6.4f}  {tpr_b_at_g:>8.4f}")
     print(f"{'─'*70}")
 
-#============================ PLOTS ======================
-
-for (name, beta, gamma, color, fname) in [
-    ("Psl-CNN",  beta_psi,  gamma_psi,  "red",    "psl_cnn"),
-    ("Baseline", beta_base, gamma_base, "orange", "baseline"),
-]:
-    mse = 1 - beta
+#============================ PLOTS (P_fa = 0.01; reset after 0.05 block above) ======================
+target_pfa = 0.01
+gamma_psi  = mu_psi  + norm.ppf(1.0 - target_pfa) * sigma_psi
+gamma_base = mu_base + norm.ppf(target_pfa) * sigma_base
 
 #Beta Signal Vs Beta Noise Plot
 plt.figure(figsize=(8,6))
-plt.hist(beta_psi[test_labels==0], bins=50, alpha=0.5, label='Psl-CNN Noise (H0)')
-plt.hist(beta_psi[test_labels==1], bins=50, alpha=0.5, label='Psl-CNN Anomaly (H1)')
-plt.axvline(gamma_psi, color='red', linestyle='--', label=f'Psl-CNN γ (P_fa={target_pfa})')
+plt.hist(beta_psi[test_labels==0], bins=50, alpha=0.5, label=f'{ROC_PSL_CNN} noise (H0)')
+plt.hist(beta_psi[test_labels==1], bins=50, alpha=0.5, label=f'{ROC_PSL_CNN} signal (H1)')
+plt.axvline(gamma_psi, color='red', linestyle='--', label=f'γ ({ROC_PSL_CNN}, P_fa={target_pfa})')
 plt.xlabel('β Score')
 plt.ylabel('Frequency')
-plt.title('Distribution of β Scores - Psl-CNN')
+plt.title(f'Distribution of β — {ROC_PSL_CNN}')
 plt.legend()
 plt.grid(True)
 plt.savefig("anomalies_Psi-NN_inverted/beta_distribution_psl_cnn_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
@@ -254,12 +263,12 @@ plt.close()
 #MSE Signal Vs MSE Noise Plot
 mse_psi = 1 - beta_psi  # since β = 1 - (SSE/SST), MSE is proportional to 1 - β
 plt.figure(figsize=(8,6))
-plt.hist(mse_psi[test_labels==0], bins=50, alpha=0.5, label='Psl-CNN Noise (H0)')
-plt.hist(mse_psi[test_labels==1], bins=50, alpha=0.5, label='Psl-CNN Anomaly (H1)')
-plt.axvline(1 - gamma_psi, color='red', linestyle='--', label=f'Psl-CNN MSE Threshold (P_fa={target_pfa})')
+plt.hist(mse_psi[test_labels==0], bins=50, alpha=0.5, label=f'{ROC_PSL_CNN} noise (H0)')
+plt.hist(mse_psi[test_labels==1], bins=50, alpha=0.5, label=f'{ROC_PSL_CNN} signal (H1)')
+plt.axvline(1 - gamma_psi, color='red', linestyle='--', label=f'MSE threshold ({ROC_PSL_CNN}, P_fa={target_pfa})')
 plt.xlabel('MSE Score (1 - β)')
 plt.ylabel('Frequency')
-plt.title('Distribution of MSE Scores - Psl-CNN')
+plt.title(f'Distribution of MSE — {ROC_PSL_CNN}')
 plt.legend()
 plt.grid(True)
 plt.savefig("anomalies_Psi-NN_inverted/mse_distribution_psl_cnn_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
@@ -267,12 +276,12 @@ plt.close()
 
 #Baseline Beta Signal Vs Baseline Beta Noise Plot
 plt.figure(figsize=(8,6))
-plt.hist(beta_base[test_labels==0], bins=50, alpha=0.5, label='Baseline Noise (H0)')
-plt.hist(beta_base[test_labels==1], bins=50, alpha=0.5, label='Baseline Anomaly (H1)')
-plt.axvline(gamma_base, color='orange', linestyle='--', label=f'Baseline γ (P_fa={target_pfa})')
+plt.hist(beta_base[test_labels==0], bins=50, alpha=0.5, label=f'{ROC_CONV_AE_BASELINE} noise (H0)')
+plt.hist(beta_base[test_labels==1], bins=50, alpha=0.5, label=f'{ROC_CONV_AE_BASELINE} signal (H1)')
+plt.axvline(gamma_base, color='orange', linestyle='--', label=f'γ ({ROC_CONV_AE_BASELINE}, P_fa={target_pfa})')
 plt.xlabel('β Score')
 plt.ylabel('Frequency')
-plt.title('Distribution of β Scores - Baseline')
+plt.title(f'Distribution of β — {ROC_CONV_AE_BASELINE}')
 plt.legend()
 plt.grid(True)
 plt.savefig("anomalies_Psi-NN_inverted/beta_distribution_baseline_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
@@ -281,12 +290,12 @@ plt.close()
 #Baseline MSE Signal Vs Baseline MSE Noise Plot
 mse_base = 1 - beta_base
 plt.figure(figsize=(8,6))
-plt.hist(mse_base[test_labels==0], bins=50, alpha=0.5, label='Baseline Noise (H0)')
-plt.hist(mse_base[test_labels==1], bins=50, alpha=0.5, label='Baseline Anomaly (H1)')
-plt.axvline(1 - gamma_base, color='orange', linestyle='--', label=f'Baseline MSE Threshold (P_fa={target_pfa})')
+plt.hist(mse_base[test_labels==0], bins=50, alpha=0.5, label=f'{ROC_CONV_AE_BASELINE} noise (H0)')
+plt.hist(mse_base[test_labels==1], bins=50, alpha=0.5, label=f'{ROC_CONV_AE_BASELINE} signal (H1)')
+plt.axvline(1 - gamma_base, color='orange', linestyle='--', label=f'MSE threshold ({ROC_CONV_AE_BASELINE}, P_fa={target_pfa})')
 plt.xlabel('MSE Score (1 - β)')
 plt.ylabel('Frequency')
-plt.title('Distribution of MSE Scores - Baseline')
+plt.title(f'Distribution of MSE — {ROC_CONV_AE_BASELINE}')
 plt.legend()
 plt.grid(True)
 plt.savefig("anomalies_Psi-NN_inverted/mse_distribution_baseline_nvertedPsi-nn.png", dpi=300, bbox_inches='tight')
@@ -299,8 +308,8 @@ plt.close()
 # Produces a 2x2 figure per SNR: top row = β, bottom row = MSE (1-β), columns = Psl-CNN / Baseline.
 # Reset to Pfa=0.01 (may have been overwritten above)
 target_pfa = 0.01
-gamma_psi  = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi
-gamma_base = mu_base + norm.ppf(1 - target_pfa) * sigma_base
+gamma_psi  = mu_psi  + norm.ppf(1.0 - target_pfa) * sigma_psi
+gamma_base = mu_base + norm.ppf(target_pfa) * sigma_base
 
 for snr_val in [-6, 0, 6]:
     mask = (test_snr == snr_val)
@@ -312,8 +321,8 @@ for snr_val in [-6, 0, 6]:
     fig.suptitle(f'β and MSE Distributions at SNR = {snr_val:+d} dB  (Pfa={target_pfa})', fontsize=13)
 
     for col, (name, beta, gamma) in enumerate([
-        ("Psl-CNN",  beta_psi,  gamma_psi),
-        ("Baseline", beta_base, gamma_base),
+        (TABLE_PSL_CNN,  beta_psi,  gamma_psi),
+        (TABLE_CONV_AE_BASELINE, beta_base, gamma_base),
     ]):
         h0 = mask & (test_labels == 0)
         h1 = mask & (test_labels == 1)
@@ -330,10 +339,15 @@ for snr_val in [-6, 0, 6]:
         axes[0, col].set_ylabel('Frequency')
         axes[0, col].legend(fontsize=8)
         axes[0, col].grid(True)
+        beta_rule = (
+            'Upper-tail test: declare anomaly when β > γ.'
+            if name == TABLE_PSL_CNN
+            else 'Lower-tail test: declare anomaly when β < γ.'
+        )
         axes[0, col].text(
             0.5, -0.22,
             f'{beta_label} {name} β score: reconstruction fidelity of H0 (noise)\n'
-            f'vs H1 (signal). Higher β = better reconstruction.',
+            f'vs H1 (signal). {beta_rule}',
             transform=axes[0, col].transAxes,
             ha='center', va='top', fontsize=8, style='italic'
         )
@@ -368,8 +382,8 @@ for snr_val in [-6, 0, 6]:
 # This section produces the Psl-CNN and Baseline lines. ED line is in energy_detector.py.
 # Results saved to spectrum_data/ and combined into one figure by plot_pd_vs_snr.py.
 target_pfa  = 0.01
-gamma_psi   = mu_psi  + norm.ppf(1 - target_pfa) * sigma_psi
-gamma_base  = mu_base + norm.ppf(1 - target_pfa) * sigma_base
+gamma_psi   = mu_psi  + norm.ppf(1.0 - target_pfa) * sigma_psi
+gamma_base  = mu_base + norm.ppf(target_pfa) * sigma_base
 
 snr_points  = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10]
 pd_psi_arr  = []
@@ -377,13 +391,15 @@ pd_base_arr = []
 
 print(f"\n{'='*55}")
 print(f"Pd vs SNR  (Pfa = {target_pfa})")
-print(f"{'SNR (dB)':>10}  {'Psl-CNN Pd':>12}  {'Baseline Pd':>12}")
+print(f"  P_d column 1: {TABLE_PSL_CNN}")
+print(f"  P_d column 2: {TABLE_CONV_AE_BASELINE}")
+print(f"{'SNR (dB)':>10}  {'P_d':>12}  {'P_d':>12}")
 print(f"{'─'*55}")
 
 for snr_db in snr_points:
     sig_mask = (test_snr == snr_db) & (test_labels == 1)
     pd_p = float(np.mean(beta_psi[sig_mask]  > gamma_psi))  if sig_mask.sum() > 0 else np.nan
-    pd_b = float(np.mean(beta_base[sig_mask] > gamma_base)) if sig_mask.sum() > 0 else np.nan
+    pd_b = float(np.mean(beta_base[sig_mask] < gamma_base)) if sig_mask.sum() > 0 else np.nan
     pd_psi_arr.append(pd_p)
     pd_base_arr.append(pd_b)
     print(f"{snr_db:>10d}  {pd_p:>12.4f}  {pd_b:>12.4f}")
@@ -401,7 +417,10 @@ print("Saved pd_vs_snr_psinn.npy and pd_vs_snr_baseline.npy")
 # Prints one table for Psl-CNN and one for Baseline.
 modulations_list = ['qpsk', 'bpsk', '16qam', '32qam']
 
-for model_name, beta_scores in [("Psl-CNN", beta_psi), ("Baseline", beta_base)]:
+for model_name, beta_scores, use_neg_beta in [
+    (TABLE_PSL_CNN, beta_psi, False),
+    (TABLE_CONV_AE_BASELINE, beta_base, True),
+]:
     print(f"\n{'='*90}")
     print(f"AUC PER MODULATION × SNR — {model_name}")
     print(f"{'':12}" + "".join(f"  {s:>5}" for s in snr_points))
@@ -414,7 +433,8 @@ for model_name, beta_scores in [("Psl-CNN", beta_psi), ("Baseline", beta_base)]:
             if mask.sum() == 0 or len(np.unique(test_labels[mask])) < 2:
                 row += "    N/A"
                 continue
-            fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_scores[mask])
+            scores = -beta_scores[mask] if use_neg_beta else beta_scores[mask]
+            fpr_s, tpr_s, _ = roc_curve(test_labels[mask], scores)
             row += f"  {auc(fpr_s, tpr_s):.3f}"
         print(row)
     print("─" * 90)

@@ -16,6 +16,7 @@ import time
 from scipy.stats import norm   # for Q^{-1}(P_fa)
 
 from cae_spectrum import CAE
+from experiment_labels import ROC_SPECTRUM_CAE, TABLE_SPECTRUM_CAE
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -64,7 +65,7 @@ print("Computing β on training noise (H0) for threshold estimation...")
 train_beta = compute_beta(model_cae, train_noise)
 
 mu_e, sigma_e = np.mean(train_beta), np.std(train_beta)
-print(f"CAE H0 β → mean = {mu_e:.4f},  std = {sigma_e:.4f}")
+print(f"{TABLE_SPECTRUM_CAE} H0 β → mean = {mu_e:.4f},  std = {sigma_e:.4f}")
 
 # ====================== NEYMAN-PEARSON THRESHOLD γ (inverted, same as PsiNN + baseline) ======================
 # Signals reconstruct with higher β than noise under this CAE; anomaly = β > γ (upper tail on H0).
@@ -90,9 +91,9 @@ optimal_tpr = tpr_cae[best_idx]
 param_cae = sum(p.numel() for p in model_cae.parameters())
 
 print(f"\n=== FINAL RESULTS (Pablos et al. Step 3.3) ===")
-print(f"CAE  AUC: {auc_cae:.4f}  γ = {gamma:.4f}  params = {param_cae:,}")
+print(f"{TABLE_SPECTRUM_CAE}  AUC: {auc_cae:.4f}  γ = {gamma:.4f}  params = {param_cae:,}")
 print(f"\n=== YOUDEN INDEX (Optimal Pfa) ===")
-print(f"CAE  optimal Pfa = {optimal_pfa:.4f}  TPR = {optimal_tpr:.4f}  Youden = {youden_cae[best_idx]:.4f}")
+print(f"{TABLE_SPECTRUM_CAE}  optimal Pfa = {optimal_pfa:.4f}  TPR = {optimal_tpr:.4f}  Youden = {youden_cae[best_idx]:.4f}")
 
 # ====================== OUTPUT FOLDER ======================
 out_dir = Path("anomalies_CAE")
@@ -101,21 +102,21 @@ for f in out_dir.glob("*.png"):
     f.unlink()
 
 with open("spectrum_data/evaluation_results_cae.txt", "w") as f:
-    f.write("=== EVALUATION RESULTS — CAE (β, inverted: upper-tail γ, detect signal when β > γ; same as PsiNN/baseline) ===\n")
+    f.write("=== EVALUATION RESULTS — Spectrum CAE (β, upper-tail γ; same tail convention as inverted Psl-CNN) ===\n")
     f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-    f.write(f"CAE AUC: {auc_cae:.4f}\n")
-    f.write(f"CAE γ (P_fa={target_pfa}): {gamma:.4f}\n")
-    f.write(f"CAE parameters: {param_cae:,}\n")
+    f.write(f"{TABLE_SPECTRUM_CAE} AUC: {auc_cae:.4f}\n")
+    f.write(f"{TABLE_SPECTRUM_CAE} γ (P_fa={target_pfa}): {gamma:.4f}\n")
+    f.write(f"{TABLE_SPECTRUM_CAE} parameters: {param_cae:,}\n")
 
 # ROC plot
 plt.figure(figsize=(8,6))
-plt.plot(fpr_cae, tpr_cae, label=f'CAE (AUC = {auc_cae:.3f})')
+plt.plot(fpr_cae, tpr_cae, label=f'{ROC_SPECTRUM_CAE} (AUC = {auc_cae:.3f})')
 plt.scatter(optimal_pfa, optimal_tpr, marker='*', s=200, color='blue', zorder=5,
-            label=f'CAE Youden (Pfa={optimal_pfa:.3f})')
+            label=f'{ROC_SPECTRUM_CAE} Youden (Pfa={optimal_pfa:.3f})')
 plt.plot([0,1], [0,1], 'k--')
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
-plt.title('ROC Curve - Modulation-Agnostic Anomaly Detection (β statistic) — CAE')
+plt.title(f'ROC — {ROC_SPECTRUM_CAE} (β statistic)')
 plt.legend()
 plt.grid(True)
 plt.savefig(out_dir / "roc_comparison.png", dpi=300, bbox_inches='tight')
@@ -124,7 +125,7 @@ plt.close()
 # TPR by SNR range (P_fa = 0.01)
 print(f"\n{'='*60}")
 print(f"TPR BY SNR RANGE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
-print(f"{'SNR Range':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
+print(f"{'SNR Range':<16} {'Model':<18} {'AUC':>6}  {'TPR@γ':>8}")
 print(f"{'─'*60}")
 
 for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
@@ -135,13 +136,13 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     label = f"[{snr_low:+d}, {snr_high:+d}) dB"
-    print(f"{label:<16} {'CAE':<12} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
+    print(f"{label:<16} {TABLE_SPECTRUM_CAE:<18} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
     print(f"{'─'*60}")
 
 # TPR by modulation type (P_fa = 0.01)
 print(f"\n{'='*60}")
 print(f"TPR BY MODULATION TYPE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
-print(f"{'Modulation':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
+print(f"{'Modulation':<16} {'Model':<18} {'AUC':>6}  {'TPR@γ':>8}")
 print(f"{'─'*60}")
 
 for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
@@ -151,7 +152,7 @@ for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
     fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
-    print(f"{mod:<16} {'CAE':<12} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
+    print(f"{mod:<16} {TABLE_SPECTRUM_CAE:<18} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
     print(f"{'─'*60}")
 
 # TPR for P_fa = 0.05
@@ -161,7 +162,7 @@ print(f"\nTarget P_fa = {target_pfa} → γ = {gamma:.4f}")
 
 print(f"\n{'='*60}")
 print(f"TPR BY SNR RANGE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
-print(f"{'SNR Range':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
+print(f"{'SNR Range':<16} {'Model':<18} {'AUC':>6}  {'TPR@γ':>8}")
 print(f"{'─'*60}")
 
 for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
@@ -172,12 +173,12 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
     label = f"[{snr_low:+d}, {snr_high:+d}) dB"
-    print(f"{label:<16} {'CAE':<12} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
+    print(f"{label:<16} {TABLE_SPECTRUM_CAE:<18} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
     print(f"{'─'*60}")
 
 print(f"\n{'='*60}")
 print(f"TPR BY MODULATION TYPE (Pablos et al. Step 3.3, γ P_fa={target_pfa})")
-print(f"{'Modulation':<16} {'Model':<12} {'AUC':>6}  {'TPR@γ':>8}")
+print(f"{'Modulation':<16} {'Model':<18} {'AUC':>6}  {'TPR@γ':>8}")
 print(f"{'─'*60}")
 
 for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
@@ -187,7 +188,7 @@ for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
     fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
     tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
-    print(f"{mod:<16} {'CAE':<12} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
+    print(f"{mod:<16} {TABLE_SPECTRUM_CAE:<18} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
     print(f"{'─'*60}")
 
 # ====================== DISTRIBUTION PLOTS ======================
@@ -195,12 +196,12 @@ target_pfa = 0.01
 gamma = mu_e + norm.ppf(1.0 - target_pfa) * sigma_e
 
 plt.figure(figsize=(8,6))
-plt.hist(beta_cae[test_labels==0], bins=50, alpha=0.5, label='CAE Noise (H0)')
-plt.hist(beta_cae[test_labels==1], bins=50, alpha=0.5, label='CAE Signal (H1)')
+plt.hist(beta_cae[test_labels==0], bins=50, alpha=0.5, label=f'{ROC_SPECTRUM_CAE} noise (H0)')
+plt.hist(beta_cae[test_labels==1], bins=50, alpha=0.5, label=f'{ROC_SPECTRUM_CAE} signal (H1)')
 plt.axvline(gamma, color='red', linestyle='--', label=f'γ upper tail (signal if β > γ, P_fa={target_pfa})')
 plt.xlabel('β Score')
 plt.ylabel('Frequency')
-plt.title('Distribution of β Scores - CAE')
+plt.title(f'Distribution of β — {ROC_SPECTRUM_CAE}')
 plt.legend()
 plt.grid(True)
 plt.savefig(out_dir / "beta_distribution_cae.png", dpi=300, bbox_inches='tight')
@@ -208,12 +209,12 @@ plt.close()
 
 mse_cae = 1 - beta_cae
 plt.figure(figsize=(8,6))
-plt.hist(mse_cae[test_labels==0], bins=50, alpha=0.5, label='CAE Noise (H0)')
-plt.hist(mse_cae[test_labels==1], bins=50, alpha=0.5, label='CAE Signal (H1)')
+plt.hist(mse_cae[test_labels==0], bins=50, alpha=0.5, label=f'{ROC_SPECTRUM_CAE} noise (H0)')
+plt.hist(mse_cae[test_labels==1], bins=50, alpha=0.5, label=f'{ROC_SPECTRUM_CAE} signal (H1)')
 plt.axvline(1 - gamma, color='red', linestyle='--', label=f'MSE threshold (signal if MSE < 1−γ, P_fa={target_pfa})')
 plt.xlabel('MSE Score (1 - β)')
 plt.ylabel('Frequency')
-plt.title('Distribution of MSE Scores - CAE')
+plt.title(f'Distribution of MSE — {ROC_SPECTRUM_CAE}')
 plt.legend()
 plt.grid(True)
 plt.savefig(out_dir / "mse_distribution_cae.png", dpi=300, bbox_inches='tight')
@@ -247,7 +248,7 @@ for snr_val in [-6, 0, 6]:
     desc_a, desc_b = snr_descriptions[snr_val]
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 6))
-    fig.suptitle(f'CAE β and MSE Distributions at SNR = {snr_val:+d} dB  (Pfa={target_pfa})', fontsize=13)
+    fig.suptitle(f'{ROC_SPECTRUM_CAE} — β and MSE at SNR = {snr_val:+d} dB  (Pfa={target_pfa})', fontsize=13)
 
     h0 = mask & (test_labels == 0)
     h1 = mask & (test_labels == 1)
@@ -255,7 +256,7 @@ for snr_val in [-6, 0, 6]:
     axes[0].hist(beta_cae[h0], bins=40, alpha=0.6, color='steelblue',  label='Noise (H0)')
     axes[0].hist(beta_cae[h1], bins=40, alpha=0.6, color='darkorange', label='Signal (H1)')
     axes[0].axvline(gamma, color='red', linestyle='--', label='γ (signal if β > γ)')
-    axes[0].set_title('CAE — β Score')
+        axes[0].set_title(f'{ROC_SPECTRUM_CAE} — β')
     axes[0].set_xlabel('β')
     axes[0].set_ylabel('Frequency')
     axes[0].legend()
@@ -268,7 +269,7 @@ for snr_val in [-6, 0, 6]:
     axes[1].hist(mse_snr[h0], bins=40, alpha=0.6, color='steelblue',  label='Noise (H0)')
     axes[1].hist(mse_snr[h1], bins=40, alpha=0.6, color='darkorange', label='Signal (H1)')
     axes[1].axvline(1 - gamma, color='red', linestyle='--', label='MSE threshold (signal if MSE < 1−γ)')
-    axes[1].set_title('CAE — MSE Score (1-β)')
+        axes[1].set_title(f'{ROC_SPECTRUM_CAE} — MSE (1−β)')
     axes[1].set_xlabel('MSE')
     axes[1].set_ylabel('Frequency')
     axes[1].legend()
@@ -292,7 +293,7 @@ pd_cae_arr = []
 
 print(f"\n{'='*45}")
 print(f"Pd vs SNR  (Pfa = {target_pfa}, detect when β > γ)")
-print(f"{'SNR (dB)':>10}  {'CAE Pd':>10}")
+print(f"{'SNR (dB)':>10}  {'P_d':>10}  ({TABLE_SPECTRUM_CAE})")
 print(f"{'─'*45}")
 
 for snr_db in snr_points:
@@ -310,7 +311,7 @@ print("Saved pd_vs_snr_cae.npy")
 modulations_list = ['qpsk', 'bpsk', '16qam', '32qam']
 
 print(f"\n{'='*80}")
-print(f"AUC PER MODULATION × SNR — CAE")
+print(f"AUC PER MODULATION × SNR — {TABLE_SPECTRUM_CAE}")
 print(f"{'':12}" + "".join(f"  {s:>5}" for s in snr_points))
 print("─" * 80)
 

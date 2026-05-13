@@ -1,0 +1,5 @@
+model,n_channels,tail,checkpoint,status,auc,gamma,mu_h0,sigma_h0,Pd_-10dB,Pd_-6dB,Pd_0dB,Pd_+2dB,Pd_+10dB
+1D Psl-CNN,2,upper,spectrum_data/psl_cnn_200epochs.pth,ok,0.8548,0.798619,0.791928,0.002876,0.0200,0.0387,0.4713,0.7562,1.0000
+1D Psl-CNN,1,upper,spectrum_data/psl_cnn_200epochs_ch1.pth,ok,0.6250,0.930876,0.922462,0.003617,0.0063,0.0037,0.1263,0.2975,0.7050
+Conv AE baseline,2,lower,spectrum_data/baseline_200epochs.pth,ok,0.9496,0.635791,0.662451,0.011460,0.1125,0.4412,0.9625,0.9850,0.9938
+Conv AE baseline,1,lower,spectrum_data/baseline_200epochs_ch1.pth,ok,0.3760,0.928328,0.936852,0.003664,0.0200,0.0325,0.0462,0.0288,0.0025

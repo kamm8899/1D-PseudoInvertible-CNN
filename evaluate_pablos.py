@@ -1,7 +1,9 @@
 '''
-Evaluation script for AE_Pablos1d — PsiNN version of the Pablos et al. CAE.
-Uses I channel only (1, 1024) to match the CAE input format.
-Computes β statistic, ROC/AUC, Pd vs SNR, and saves pd_vs_snr_pablos.npy.
+Evaluation for the Pablos-style I-channel autoencoder (`AE_Pablos1d`):
+pseudo-invertible 1-D blocks on the in-phase stream only (1 x 1024), aligned with
+Pablos et al. for fair comparison to their I-only setup (not the same input as 2-ch models).
+
+Saves `spectrum_data/pd_vs_snr_pablos.npy` (filename kept for downstream scripts).
 
 Run order:
     train_pablos.py         → spectrum_data/pablos_200epochs.pth
@@ -16,6 +18,8 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import torch
 import numpy as np
+
+from experiment_labels import ROC_PABLOS_STYLE, TABLE_PABLOS_STYLE
 
 from spectrum_paths import get_psinn_test_data_path, assert_psinn_full_channel_metadata
 from sklearn.metrics import roc_curve, auc
@@ -33,7 +37,7 @@ _psinn_test_path = get_psinn_test_data_path()
 test_dict   = torch.load(_psinn_test_path, weights_only=False)
 assert_psinn_full_channel_metadata(test_dict)
 if test_dict.get("generation"):
-    print(f"Loaded Pablos test set {_psinn_test_path!r}  generation={test_dict['generation']}")
+    print(f"Loaded test set (I-channel slice) {_psinn_test_path!r}  generation={test_dict['generation']}")
 test_data   = test_dict["data"][:, 0:1, :]        # (N, 1, 1024)
 test_labels = test_dict["labels"].numpy()
 test_snr    = test_dict["snrs"].numpy()
@@ -46,7 +50,7 @@ train_noise      = train_noise_full[:, 0:1, :]     # (N, 1, 1024)
 model = AE_Pablos1d(nf=16, k=5, use_dropout=True).to(device)
 model.load_state_dict(torch.load("spectrum_data/pablos_200epochs.pth", weights_only=False))
 model.eval()
-print(f"Loaded AE_Pablos1d — {sum(p.numel() for p in model.parameters()):,} parameters")
+print(f"Loaded {TABLE_PABLOS_STYLE} (`AE_Pablos1d`) — {sum(p.numel() for p in model.parameters()):,} parameters")
 
 
 def compute_beta(model, data):
@@ -69,7 +73,7 @@ def compute_beta(model, data):
 print("Computing β on training noise (H0) for threshold estimation...")
 train_beta = compute_beta(model, train_noise)
 mu, sigma  = np.mean(train_beta), np.std(train_beta)
-print(f"Pablos H0 β → mean = {mu:.4f}, std = {sigma:.4f}")
+print(f"{TABLE_PABLOS_STYLE} H0 β → mean = {mu:.4f}, std = {sigma:.4f}")
 
 target_pfa = 0.01
 gamma = mu + norm.ppf(1 - target_pfa) * sigma
@@ -84,7 +88,7 @@ auc_score   = auc(fpr, tpr)
 
 youden   = tpr - fpr
 best_idx = np.argmax(youden)
-print(f"\nPablos AUC:          {auc_score:.4f}")
+print(f"\n{TABLE_PABLOS_STYLE} AUC:          {auc_score:.4f}")
 print(f"Youden optimal Pfa:  {fpr[best_idx]:.4f}  TPR = {tpr[best_idx]:.4f}")
 
 # ====================== SAVE RESULTS ======================
@@ -94,7 +98,7 @@ for f in out_dir.glob("*.png"):
     f.unlink()
 
 with open("spectrum_data/evaluation_results_pablos.txt", "w") as f:
-    f.write("=== AE_Pablos1d Evaluation Results ===\n")
+    f.write(f"=== {TABLE_PABLOS_STYLE} (`AE_Pablos1d`) — evaluation ===\n")
     f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
     f.write(f"AUC:        {auc_score:.4f}\n")
     f.write(f"γ (Pfa=0.01): {gamma:.4f}\n")
@@ -102,13 +106,13 @@ with open("spectrum_data/evaluation_results_pablos.txt", "w") as f:
 
 # ROC plot
 plt.figure(figsize=(8, 6))
-plt.plot(fpr, tpr, label=f'AE_Pablos1d (AUC = {auc_score:.3f})', linewidth=2)
+plt.plot(fpr, tpr, label=f'{ROC_PABLOS_STYLE} (AUC = {auc_score:.3f})', linewidth=2)
 plt.scatter(fpr[best_idx], tpr[best_idx], marker='*', s=200, color='red', zorder=5,
             label=f'Youden (Pfa={fpr[best_idx]:.3f})')
 plt.plot([0, 1], [0, 1], 'k--')
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
-plt.title('ROC Curve — AE_Pablos1d')
+plt.title(f'ROC — {ROC_PABLOS_STYLE}')
 plt.legend()
 plt.grid(True)
 plt.savefig(out_dir / "roc_pablos.png", dpi=300, bbox_inches='tight')
@@ -121,7 +125,7 @@ plt.hist(beta[test_labels == 1], bins=50, alpha=0.5, label='Signal (H1)')
 plt.axvline(gamma, color='red', linestyle='--', label=f'γ (P_fa={target_pfa})')
 plt.xlabel('β Score')
 plt.ylabel('Frequency')
-plt.title('β Distribution — AE_Pablos1d')
+plt.title(f'β distribution — {ROC_PABLOS_STYLE}')
 plt.legend()
 plt.grid(True)
 plt.savefig(out_dir / "beta_distribution_pablos.png", dpi=300, bbox_inches='tight')
@@ -135,7 +139,7 @@ plt.hist(mse[test_labels == 1], bins=50, alpha=0.5, label='Signal (H1)')
 plt.axvline(1 - gamma, color='red', linestyle='--', label=f'MSE threshold (P_fa={target_pfa})')
 plt.xlabel('MSE Score (1 − β)')
 plt.ylabel('Frequency')
-plt.title('MSE Distribution — AE_Pablos1d')
+plt.title(f'MSE distribution — {ROC_PABLOS_STYLE}')
 plt.legend()
 plt.grid(True)
 plt.savefig(out_dir / "mse_distribution_pablos.png", dpi=300, bbox_inches='tight')
@@ -152,7 +156,7 @@ for snr_val in [-6, 0, 6]:
     h1 = mask & (test_labels == 1)
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    fig.suptitle(f'AE_Pablos1d — β and MSE at SNR = {snr_val:+d} dB  (Pfa={target_pfa})', fontsize=13)
+    fig.suptitle(f'{ROC_PABLOS_STYLE} — β and MSE at SNR = {snr_val:+d} dB  (Pfa={target_pfa})', fontsize=13)
 
     # β
     axes[0].hist(beta[h0], bins=40, alpha=0.6, color='steelblue',  label='Noise (H0)')
@@ -214,8 +218,8 @@ snr_points = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10]
 pd_arr = []
 
 print(f"\n{'='*40}")
-print(f"Pd vs SNR  (P_fa = {target_pfa})")
-print(f"{'SNR (dB)':>10}  {'Pablos Pd':>12}")
+print(f"Pd vs SNR  (P_fa = {target_pfa}) — {TABLE_PABLOS_STYLE}")
+print(f"{'SNR (dB)':>10}  {'P_d':>12}")
 print(f"{'─'*40}")
 
 for snr_db in snr_points:
