@@ -1,127 +1,173 @@
-# Modulation-Agnostic Spectrum Sensing Anomaly Detection
-### 1D Pseudo-Invertible Neural Network (Psi-NN) vs. Baseline CAE
+# Modulation-Agnostic Spectrum Sensing — Anomaly Detection
 
-Implementation of the anomaly detection framework from:
-> Pablos et al. (2022). *Modulation-agnostic spectrum sensing using deep learning.* ICT Express.
+Research code for **1D pseudo-invertible** and **baseline** convolutional autoencoders on synthetic I/Q data, following the **β statistic** and **Neyman–Pearson** style calibration from:
+
+> Pablos et al. (2022). *Modulation-agnostic spectrum sensing using deep learning.* ICT Express.  
 > https://www.sciencedirect.com/science/article/pii/S2405959522000480
 
 ---
 
 ## Overview
 
-This project detects the presence of modulated radio signals (anomalies) in a channel that is assumed to contain only AWGN noise under the null hypothesis H₀. Two autoencoder architectures are compared:
+- **Goal:** Detect primary-user–like **modulated signals** vs **AWGN-only** segments using models trained **only on noise** (unsupervised anomaly detection).
+- **Input:** Batches of shape `(N, C, 1024)` with `C ∈ {1, 2}` depending on the experiment (I-only vs I/Q).
+- **Score:** Per-sample **coefficient of determination β** from autoencoder reconstruction (same spirit as Pablos et al., Eq. (5)).
+- **Threshold:** Scalar **γ** from mean and std of β on **training noise** at a nominal **\(P_{\mathrm{fa}}\)** (e.g. 0.01 and 0.05 in scripts).
 
-- **Psi-CNN** — 1D autoencoder built with Pseudo-Invertible Neural Network (PsiNN) layers, whose encoder and decoder share weights via right-inverse weight tying.
-- **Baseline** — Standard 1D convolutional autoencoder (CAE) with separately parameterized encoder and decoder.
+**Models compared in this repo**
 
-Anomaly detection follows **Section 3.3 (Neyman-Pearson criterion)**:
-1. Train autoencoders on noise-only data (H₀).
-2. Compute the **Coefficient of Determination β** per sample as the reconstruction quality score.
-3. Estimate a **CFAR threshold γ** from noise training statistics at a target false-alarm rate P_FA.
-4. Declare a signal present if β < γ.
-5. Evaluate via ROC curve, AUC, and TPR at γ broken down by SNR range and modulation type.
+| Name in docs / `experiment_labels.py` | Code | Role |
+|----------------------------------------|------|------|
+| **1D Psl-CNN** | `AE_Classifier1d` (`psinn_layer_1d.py`) | Encoder and decoder share weights via **`PsiNNConv1d`** (right pseudoinverse). |
+| **Conv AE baseline** | `AE_Baseline_Classifier1d` | Separate **`Conv1d`** encoder and **`ConvTranspose1d`** decoder; optional small **`C5`** classifier head (reconstruction path `AE()` used for sensing). |
+| **Spectrum CAE** | `CAE` (`cae_spectrum.py`) | Different conv autoencoder: **upsample + conv** decoder, fixed channel schedule; evaluated from `spectrum_data/evaluate_anomalies_cae.py`. |
+| **Pablos-style AE (I-only)** | `AE_Pablos1d` (`psinn_layer_1d_pablos.py`) | Paper-style **single-channel** stack; `evaluate_pablos.py`. |
+
+**Important:** “CAE” here names the **spectrum `CAE` class**, not “any conv AE.” The baseline is also convolutional; the distinction is **architecture + parameter tying**, not “CAE vs non-CAE” in the taxonomy sense.
+
+**Main inverted evaluation (`evaluate_anomaly_inverted.py`)** uses a **mixed-tail** convention (same nominal \(P_{\mathrm{fa}}\), different inequality):
+
+- **1D Psl-CNN:** **upper tail** on H₀ — \(P_{\mathrm{fa}} = P(\beta > \gamma \mid H_0)\), ROC on **+β**, \(P_d = P(\beta > \gamma \mid H_1)\).
+- **Conv AE baseline:** **lower tail** on H₀ — \(P_{\mathrm{fa}} = P(\beta < \gamma \mid H_0)\), ROC on **−β**, \(P_d = P(\beta < \gamma \mid H_1)\).
+
+Other scripts (spectrum CAE, Pablos, forward PsiNN) document their own tail / ROC orientation in-file.
 
 ---
 
-## Project Structure
+## Repository layout
 
 ```
 Research_PSNN/
-├── psinn_layer_1d.py               # PsiNNConv1d layer + AE_Classifier1d + AE_Baseline_Classifier1d
-├── psinn_layer_and_autoencoder.py  # Original 2D PsiNN layer (reference)
-├── cae_spectrum.py                 # Standalone CAE architecture (Section 3.2)
-├── generate_spectrum_dataset.py    # Synthetic I/Q dataset generator
-├── train_models.py                 # Training loop for Psi-CNN and Baseline
-├── evaluate_anomaly.py             # Evaluation scaffold (Section 3.3)
-├── evaluate_anomaly_inverted.py    # Full evaluation — Psi-NN inverted architecture
-├── load_data.py                    # Data loading utilities
-├── diagnostic_recon_error.py       # Reconstruction error diagnostics
+├── psinn_layer_1d.py           # PsiNNConv1d, AE_Classifier1d (1D Psl-CNN), AE_Baseline_Classifier1d
+├── psinn_layer_1d_pablos.py    # AE_Pablos1d (Pablos-style I-only)
+├── cae_spectrum.py             # Spectrum CAE class + optional __main__ training
+├── spectrum_paths.py           # Test tensor paths, full-channel metadata checks, env overrides
+├── experiment_labels.py      # Consistent plot/log names (combined Pd figure, etc.)
+├── generate_spectrum_dataset.py
+├── train_models.py             # Train 2-ch 1D Psl-CNN + conv AE baseline (200 epochs, k=5)
+├── train_pablos.py             # Train Pablos-style AE weights
+├── evaluate_anomaly_inverted.py    # Primary full eval: 2-ch, mixed tails, Pd vs SNR, plots
+├── evaluate_pablos.py
+├── energy_detector.py          # ED benchmark → spectrum_data/pd_vs_snr_ed.npy
+├── plot_pd_vs_snr.py           # Combined Pd vs SNR figure (loads *.npy from other scripts)
+├── load_data.py
+├── diagnostic_recon_error.py
+├── run_cae_ablation_report.py  # Summarize CAE evals across test-channel variants
 │
-├── spectrum_data/                  # Generated data and saved model weights
-│   ├── train_noise.pt              # Pure AWGN training set  (20 000 × 2 × 1024)
-│   ├── test_data.pt                # Mixed test set          (5 000 × 2 × 1024)
-│   ├── psl_cnn_200epochs.pth       # Trained Psi-CNN weights
-│   ├── baseline_200epochs.pth      # Trained Baseline weights
-│   ├── evaluate_anomalies_forward.py       # Evaluation — forward architecture
-│   ├── evaluate_anomalies_forward_cae.py   # Evaluation — forward CAE
-│   └── evaluate_anomalies_inverted_cae.py  # Evaluation — inverted CAE
+├── spectrum_data/
+│   ├── train_noise.pt / train_noise_raw.pt   # Normalized vs raw training noise
+│   ├── test_data_full.pt / test_data_raw_full.pt   # Required default for PsiNN / Pablos / ED / CAE
+│   ├── psl_cnn_*epochs.pth, baseline_*epochs.pth
+│   ├── pablos_200epochs.pth, cae_best.pth (if trained)
+│   ├── evaluate_anomalies_forward.py   # Forward PsiNN (100-epoch ckpts, k=3)
+│   ├── evaluate_anomalies_cae.py       # Spectrum CAE eval
+│   ├── train_models_1channel.py        # Train 1-ch Psl-CNN + baseline
+│   ├── evaluate_channel_ablation.py    # 1ch vs 2ch table + figures → channel_ablation_results*.csv/png
+│   └── pd_vs_snr_*.npy, snr_points.npy, evaluation_results*.txt
 │
-└── anomalies_Psi-NN_inverted/      # Output plots (auto-created on evaluation run)
-    ├── roc_comparison.png
-    ├── beta_distribution_psl_cnn_inverted.png
-    ├── mse_distribution_psl_cnn_inverted.png
-    ├── beta_distribution_baseline_inverted.png
-    └── mse_distribution_baseline_inverted.png
+├── anomalies_Psi-NN_inverted/      # Plots from evaluate_anomaly_inverted.py
+├── anomalies_PSi-NN_forward/
+├── anomalies_CAE/
+├── anomalies_Pablos/
+├── ItalyPowerDemandTest/           # Separate toy demo (not required for spectrum pipeline)
+└── Old Version/                    # Legacy 2D PsiNN reference
 ```
+
+There is **no** `evaluate_anomaly.py` or `evaluate_anomalies_forward_cae.py` in the tree anymore; use the scripts listed above.
 
 ---
 
-## Quickstart
+## Dependencies
 
-### 1. Install dependencies
 ```bash
-pip install torch numpy scikit-learn scipy matplotlib
+pip install torch numpy scipy scikit-learn matplotlib
 ```
 
-### 2. Generate the dataset
-```bash
-python generate_spectrum_dataset.py
-```
-Produces `spectrum_data/train_noise.pt` (20 000 pure-noise I/Q samples) and `spectrum_data/test_data.pt` (5 000 samples: 50% noise, 50% modulated signals across QPSK, BPSK, 16-QAM, FM).
+**macOS:** If you see `OMP: Error #15` / duplicate `libomp`, set before importing PyTorch/NumPy:
 
-### 3. Train the models
 ```bash
-python train_models.py
+export KMP_DUPLICATE_LIB_OK=TRUE
 ```
-Trains both Psi-CNN and Baseline autoencoders for 200 epochs on noise-only data. Saves weights to `spectrum_data/`.
 
-### 4. Run evaluation
-```bash
-python evaluate_anomaly_inverted.py
-```
-Outputs results to the terminal and saves plots to `anomalies_Psi-NN_inverted/`.
+Training scripts in `spectrum_data/` set this internally **before** `import torch`.
 
 ---
 
-## Section 3.3 — Neyman-Pearson Detection
+## Data generation
 
-**β score (Coefficient of Determination):**
+Default **PsiNN / Pablos / energy detector / CAE (default path)** expect the **full** test channel: **pulse shaping** and **SNR uncertainty** in the saved metadata (`spectrum_paths.assert_psinn_full_channel_metadata`).
 
-$$\beta = 1 - \frac{\sum(X_i - \hat{X}_i)^2}{\sum(X_i - \bar{X})^2}$$
+Generate the canonical files:
 
-β ≈ 1 → good reconstruction (noise / H₀)  
-β << 1 → poor reconstruction (signal present / H₁)
+```bash
+python generate_spectrum_dataset.py --tag full --snr-uncertainty-db 2
+```
 
-**CFAR threshold γ:**
+This writes (among others):
 
-Under H₀, β ~ Gaussian(μ_e, σ_e). Given target false-alarm rate P_FA:
+- `spectrum_data/train_noise.pt`, `train_noise_raw.pt`
+- `spectrum_data/test_data_full.pt`, `test_data_raw_full.pt`
 
-$$\gamma = \mu_e + \sigma_e \cdot Q^{-1}(P_{FA})$$
+**Flags:** `--no-pulse-shaping`, `--tag <name>` for ablation copies (`test_data_<tag>.pt`). See `spectrum_paths.py` for **`SPECTRUM_TEST_DATA_*`** overrides.
 
-Detection rule: **anomaly if β < γ**
-
-Two P_FA values are evaluated: **0.01** and **0.05**, with results broken down by SNR range ([-10, -5), [-5, 0), [0, 5), [5, 10) dB) and modulation type (QPSK, BPSK, 16-QAM, FM).
-
----
-
-## Data
-
-| Split | Samples | Content |
-|-------|---------|---------|
-| Train | 20 000 | Pure AWGN (H₀ only) |
-| Test  | 5 000  | 50% noise, 50% modulated signals |
-
-Modulations: QPSK, BPSK, 16-QAM, FM  
-SNR range: −10 to +10 dB (uniform random)  
-Signal format: 2-channel I/Q, length 1024
+**Note:** `spectrum_data/evaluate_anomalies_cae.py` feeds the spectrum **`CAE`** with the **in-phase slice** of the **raw** packed tensors, `[:, 0:1, :]` (1×1024), while inverted PsiNN uses full **2×1024** I/Q from the normalized `data` field.
 
 ---
 
-## Models
+## Training
 
-| Model | Architecture | Parameters | Weight sharing |
-|-------|-------------|------------|----------------|
-| Psi-CNN | PsiNNConv1d × 4 (encoder = decoder via right-inverse) | ~fewer | Yes |
-| Baseline | Conv1d × 4 encoder + ConvTranspose1d × 4 decoder | ~more | No |
+| Script | Output (examples) |
+|--------|---------------------|
+| `python train_models.py` | `spectrum_data/psl_cnn_200epochs.pth`, `baseline_200epochs.pth` — **2 ch**, **k=5**, matches `evaluate_anomaly_inverted.py`. |
+| `python spectrum_data/train_models_1channel.py --epochs 200` | `psl_cnn_200epochs_ch1.pth`, `baseline_200epochs_ch1.pth` for **I-only** ablation. |
+| `python train_pablos.py` | Weights for `evaluate_pablos.py` (e.g. `pablos_200epochs.pth`). |
+| `python cae_spectrum.py` | Can train / save spectrum CAE checkpoints (see file `__main__`). |
 
-Both use `nf=16`, `k=3`, dropout=0.3, trained with MSE loss on noise reconstruction.
+**Forward** evaluation (`spectrum_data/evaluate_anomalies_forward.py`) loads **`psl_cnn_100epochs.pth`** / **`baseline_100epochs.pth`** with **k=3** — not the same checkpoint as the inverted 200-epoch run unless you align them.
+
+---
+
+## Evaluation (quick reference)
+
+| Script | Purpose |
+|--------|---------|
+| `evaluate_anomaly_inverted.py` | Full **2-ch** 1D Psl-CNN + conv AE baseline: ROC, AUC, Youden, TPR tables, β/MSE plots, **Pd vs SNR** → `spectrum_data/pd_vs_snr_psinn.npy`, `pd_vs_snr_baseline.npy`, `snr_points.npy`. |
+| `spectrum_data/evaluate_anomalies_forward.py` | Same scoring family, **100-epoch / k=3** checkpoints. |
+| `spectrum_data/evaluate_anomalies_cae.py` | **Spectrum `CAE`**, upper-tail γ, **+β** ROC → `pd_vs_snr_cae.npy`. |
+| `evaluate_pablos.py` | **Pablos-style I-only** AE → `pd_vs_snr_pablos.npy`. |
+| `energy_detector.py` | Raw-domain energy → `pd_vs_snr_ed.npy`. |
+| `spectrum_data/evaluate_channel_ablation.py` | Side-by-side **1ch vs 2ch** for Psl-CNN + baseline (same mixed-tail rule as inverted). |
+| `plot_pd_vs_snr.py` | Reads the `pd_vs_snr_*.npy` files and saves **`pd_vs_snr_combined.png`** at repo root. |
+
+Run **after** the corresponding training and eval steps so all `.npy` files exist (ED line optional in `plot_pd_vs_snr.py`).
+
+---
+
+## β and γ (short)
+
+\[
+\beta = 1 - \frac{\mathrm{SSE}}{\mathrm{SST}}
+\]
+
+with SSE/SST computed over **all** time and channel dimensions in the batch (see `compute_beta` in each eval script).
+
+**γ** is set from **training-noise** β statistics and `scipy.stats.norm.ppf` at the chosen **\(P_{\mathrm{fa}}\)**. The **inequality** used for “signal” vs ROC sign of β depends on the script (see **Overview** for inverted mixed tails).
+
+---
+
+## Human-readable names (`experiment_labels.py`)
+
+Plot legends and log strings for the combined figure and several evaluators are centralized in **`experiment_labels.py`** so “Spectrum CAE”, “1D Psl-CNN”, “Conv AE baseline”, and “Pablos-style AE (I-only)” stay consistent. Adjust there if you rename curves for a paper.
+
+---
+
+## Optional / legacy
+
+- **`ItalyPowerDemandTest/`** — small **univariate** toy dataset for layer smoke tests; not the spectrum pipeline.
+- **`Old Version/psinn_layer_and_autoencoder.py`** — 2D PsiNN reference only.
+
+---
+
+## License / attribution
+
+Copyright notice appears in `psinn_layer_1d.py` (Jessica Kamman / Jessica Sinn). Cite Pablos et al. (2022) when using the β / NP methodology in publications.
