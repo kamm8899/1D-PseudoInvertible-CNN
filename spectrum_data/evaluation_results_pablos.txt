@@ -1,5 +1,5 @@
-=== AE_Pablos1d Evaluation Results ===
-Date: 2026-05-12 16:15:39
+=== Pablos-style AE (`AE_Pablos1d`) — evaluation ===
+Date: 2026-05-13 19:03:37
 
 AUC:        0.9986
 γ (Pfa=0.01): 0.2013

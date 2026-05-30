@@ -37,6 +37,7 @@ from scipy.stats import norm
 from sklearn.metrics import roc_curve, auc
 
 from cae_spectrum import CAE
+from experiment_labels import ROC_SPECTRUM_CAE
 from generate_spectrum_dataset import generate_iq_dataset, pack_test_tensors_for_save
 
 
@@ -264,7 +265,7 @@ def main() -> None:
         )
     plt.xlabel("SNR (dB) nominal")
     plt.ylabel(r"$P_d$  ($\beta > \gamma$, H1)")
-    plt.title("CAE — Pd vs SNR ablation (same model, four test channels)")
+    plt.title(f"{ROC_SPECTRUM_CAE} — Pd vs SNR ablation (same model, four test channels)")
     plt.xticks(snr_points)
     plt.grid(True, alpha=0.35)
     plt.legend()

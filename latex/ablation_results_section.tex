@@ -1,0 +1,34 @@
+% IEEE-style Results fragment: ablation studies
+% Requires: \usepackage{booktabs} (optional --- replace \toprule etc. with \hline if undesired)
+
+\subsection{Ablation Studies}
+
+\subsubsection{In-phase versus in-quadrature input}
+The primary detectors operate on complex baseband segments represented as two streams (in-phase and quadrature, I/Q). To quantify sensitivity to the quadrature component, separate autoencoders were trained with identical depth, width, kernel size, and schedule, but with input dimension $C\!=\!1$ (I-only) versus $C\!=\!2$ (I/Q). Evaluation used the same full-channel test corpus (pulse shaping and nominal-SNR uncertainty as in the simulation setup) and the same tail conventions as in the main experiment: pseudo-invertible stacks used an upper-tail $\beta$ threshold ($\beta>\gamma$ under $H_1$) with ROC constructed on $+\beta$; the convolutional baseline used a lower-tail rule on $\beta$, with ROC constructed on $-\beta$ so that larger scores favor $H_1$.
+
+Table~\ref{tab:channel_ablation} summarizes pooled-test AUC, CFAR threshold $\gamma$ at $P_{\mathrm{fa}}\!=\!0.01$, training-noise statistics of $\beta$, and empirical detection probability $\hat{P}_d$ at selected nominal SNRs. Removing the Q branch reduces AUC for both architectures; the effect is especially pronounced for the conventional baseline, for which the one-stream model yields AUC below $0.5$ under the present orientation, indicating loss of rank separability on the pooled mixture rather than a mere threshold shift. The pseudo-invertible model retains nontrivial separation (AUC $0.625$) with I-only input but remains inferior to the two-stream variant, which supports reporting two-channel scores as the primary operating point.
+
+\begin{table}[!t]
+  \centering
+  \footnotesize
+  \caption{Input-channel ablation at $P_{\mathrm{fa}}\!=\!0.01$ (pooled test). $\mu_0$ and $\sigma_0$ are mean and standard deviation of $\beta$ on training noise; $\gamma$ is the Neyman--Pearson threshold; $\hat{P}_d$ is the empirical detection rate on $H_1$ samples at the listed nominal SNR.}
+  \label{tab:channel_ablation}
+  \begin{tabular}{@{}llccccccc@{}}
+    \toprule
+    \textbf{Model} & \textbf{Input} & \textbf{AUC} & \textbf{$\gamma$} & \textbf{$\mu_0$} & \textbf{$\sigma_0$} &
+    \textbf{$\hat{P}_d(-10)$} & \textbf{$\hat{P}_d(0)$} & \textbf{$\hat{P}_d(+10)$} \\
+    \midrule
+    Psl-CAE        & I/Q & $0.8548$ & $0.7986$ & $0.7919$ & $0.0029$ & $0.020$ & $0.471$ & $1.000$ \\
+    Psl-CAE        & I   & $0.6250$ & $0.9309$ & $0.9225$ & $0.0036$ & $0.006$ & $0.126$ & $0.705$ \\
+    ConvAE baseline& I/Q & $0.9496$ & $0.6358$ & $0.6625$ & $0.0115$ & $0.113$ & $0.963$ & $0.994$ \\
+    ConvAE baseline& I   & $0.3760$ & $0.9283$ & $0.9369$ & $0.0037$ & $0.020$ & $0.046$ & $0.003$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsubsection{Parameter count under channel ablation}
+The pseudo-invertible encoder--decoder tie changes only the first-stage coupling to the input; parameter totals are therefore $54{,}880$ (I/Q) versus $54{,}800$ (I-only). The unconstrained baseline changes more noticeably ($108{,}800$ versus $108{,}640$) because encoder and decoder widths are independent. These counts should accompany any efficiency claim when comparing rows in Table~\ref{tab:channel_ablation}.
+
+% --- Optional paragraph (uncomment if you add a supplementary figure) ---
+% \subsubsection{Synthetic test-channel impairments}
+% Additional evaluations (supplementary material) repeat detection scoring while toggling raised-cosine pulse shaping and $\pm2$\,dB uniform jitter around each nominal test SNR in the waveform generator, holding network weights fixed. Those curves isolate sensitivity to the synthetic channel model; the main manuscript focuses on the full-channel setting used for Tables~\ref{tab:overall-results}--\ref{tab:channel_ablation}.

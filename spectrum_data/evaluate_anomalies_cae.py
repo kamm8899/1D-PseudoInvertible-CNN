@@ -102,7 +102,9 @@ for f in out_dir.glob("*.png"):
     f.unlink()
 
 with open("spectrum_data/evaluation_results_cae.txt", "w") as f:
-    f.write("=== EVALUATION RESULTS — Spectrum CAE (β, upper-tail γ; same tail convention as inverted Psl-CNN) ===\n")
+    f.write(
+        f"=== EVALUATION RESULTS — {TABLE_SPECTRUM_CAE} (β, upper-tail γ; same tail convention as inverted Psl-CNN) ===\n"
+    )
     f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
     f.write(f"{TABLE_SPECTRUM_CAE} AUC: {auc_cae:.4f}\n")
     f.write(f"{TABLE_SPECTRUM_CAE} γ (P_fa={target_pfa}): {gamma:.4f}\n")
@@ -256,7 +258,7 @@ for snr_val in [-6, 0, 6]:
     axes[0].hist(beta_cae[h0], bins=40, alpha=0.6, color='steelblue',  label='Noise (H0)')
     axes[0].hist(beta_cae[h1], bins=40, alpha=0.6, color='darkorange', label='Signal (H1)')
     axes[0].axvline(gamma, color='red', linestyle='--', label='γ (signal if β > γ)')
-        axes[0].set_title(f'{ROC_SPECTRUM_CAE} — β')
+    axes[0].set_title(f'{ROC_SPECTRUM_CAE} — β')
     axes[0].set_xlabel('β')
     axes[0].set_ylabel('Frequency')
     axes[0].legend()
@@ -269,7 +271,7 @@ for snr_val in [-6, 0, 6]:
     axes[1].hist(mse_snr[h0], bins=40, alpha=0.6, color='steelblue',  label='Noise (H0)')
     axes[1].hist(mse_snr[h1], bins=40, alpha=0.6, color='darkorange', label='Signal (H1)')
     axes[1].axvline(1 - gamma, color='red', linestyle='--', label='MSE threshold (signal if MSE < 1−γ)')
-        axes[1].set_title(f'{ROC_SPECTRUM_CAE} — MSE (1−β)')
+    axes[1].set_title(f'{ROC_SPECTRUM_CAE} — MSE (1−β)')
     axes[1].set_xlabel('MSE')
     axes[1].set_ylabel('Frequency')
     axes[1].legend()

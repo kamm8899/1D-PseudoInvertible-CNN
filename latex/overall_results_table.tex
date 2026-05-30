@@ -1,0 +1,17 @@
+\begin{table}[!t]
+  \centering
+  \caption{Overall detection performance at $P_{\mathrm{fa}}=0.01$: training-noise $\beta$ (mean$\pm$std), threshold $\gamma$, pooled-test AUC, and parameter count. Conv AE baseline uses a lower-tail $\gamma$ on $\beta$; ROC/AUC use $-\beta$ so larger score implies $H_1$. Other models use an upper-tail $\gamma$ on $\beta$.}
+  \label{tab:overall-results}
+  \resizebox{\columnwidth}{!}{%
+  \begin{tabular}{lcccc}
+    \toprule
+    \textbf{Model} & \textbf{$H_0$ $\beta$ (mean$\pm$std)} & \textbf{$\gamma$} & \textbf{AUC} & \textbf{Params.} \\
+    \midrule
+    Psl-CAE2ch         & $0.7919 \pm 0.0029$ & $0.7986$ & $0.8548$ & $54{,}880$ \\
+    ConvAE-Baseline2ch & $0.6625 \pm 0.0115$ & $0.6358$ & $0.9496$ & $108{,}800$ \\
+    LowCap-CAE1ch      & $0.0385 \pm 0.0084$ & $0.0580$ & $0.9847$ & $52{,}977$ \\
+    Psl-CAE1ch         & $0.1679 \pm 0.0144$ & $0.2013$ & $0.9986$ & $46{,}736$ \\
+    \bottomrule
+  \end{tabular}%
+  }
+\end{table}

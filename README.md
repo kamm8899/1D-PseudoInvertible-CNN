@@ -20,10 +20,10 @@ Research code for **1D pseudo-invertible** and **baseline** convolutional autoen
 |----------------------------------------|------|------|
 | **1D Psl-CNN** | `AE_Classifier1d` (`psinn_layer_1d.py`) | Encoder and decoder share weights via **`PsiNNConv1d`** (right pseudoinverse). |
 | **Conv AE baseline** | `AE_Baseline_Classifier1d` | Separate **`Conv1d`** encoder and **`ConvTranspose1d`** decoder; optional small **`C5`** classifier head (reconstruction path `AE()` used for sensing). |
-| **Spectrum CAE** | `CAE` (`cae_spectrum.py`) | Different conv autoencoder: **upsample + conv** decoder, fixed channel schedule; evaluated from `spectrum_data/evaluate_anomalies_cae.py`. |
+| **CAE1ch - LowCap** | `CAE` (`cae_spectrum.py`) | 1×1024 I-only slice; **upsample + conv** decoder; plots use this display name (`experiment_labels.py`). |
 | **Pablos-style AE (I-only)** | `AE_Pablos1d` (`psinn_layer_1d_pablos.py`) | Paper-style **single-channel** stack; `evaluate_pablos.py`. |
 
-**Important:** “CAE” here names the **spectrum `CAE` class**, not “any conv AE.” The baseline is also convolutional; the distinction is **architecture + parameter tying**, not “CAE vs non-CAE” in the taxonomy sense.
+**Important:** The **`CAE` class** in code is the spectrum autoencoder; figures label it **CAE1ch - LowCap**. The conv AE baseline is a different architecture; the distinction is **architecture + parameter tying**, not “CAE vs non-CAE” in the taxonomy sense.
 
 **Main inverted evaluation (`evaluate_anomaly_inverted.py`)** uses a **mixed-tail** convention (same nominal \(P_{\mathrm{fa}}\), different inequality):
 
@@ -157,7 +157,7 @@ with SSE/SST computed over **all** time and channel dimensions in the batch (see
 
 ## Human-readable names (`experiment_labels.py`)
 
-Plot legends and log strings for the combined figure and several evaluators are centralized in **`experiment_labels.py`** so “Spectrum CAE”, “1D Psl-CNN”, “Conv AE baseline”, and “Pablos-style AE (I-only)” stay consistent. Adjust there if you rename curves for a paper.
+Plot legends and log strings for the combined figure and several evaluators are centralized in **`experiment_labels.py`** (e.g. **CAE1ch - LowCap**, “1D Psl-CNN”, “Conv AE baseline”, “Pablos-style AE (I-only)”). Adjust there if you rename curves for a paper.
 
 ---
 

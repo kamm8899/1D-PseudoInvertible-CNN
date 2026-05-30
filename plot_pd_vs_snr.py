@@ -1,5 +1,5 @@
 """
-Combined $P_d$ vs SNR — spectrum CAE, 1D Psl-CNN, conv-AE baseline, Pablos-style I-only AE.
+Combined $P_d$ vs SNR — CAE1ch - LowCap, 1D Psl-CNN, conv-AE baseline, Pablos-style I-only AE.
 
 Run order (outputs must exist before this script):
     energy_detector.py                        → pd_vs_snr_ed.npy
