@@ -239,9 +239,65 @@ def evaluate(model, train_noise, test_data, test_labels, test_snrs, device,
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+import argparse
+import matplotlib.pyplot as plt
+
+
+def _plot_ablation(results, snr_points, out_path='ablation_pd_vs_snr.png'):
+    markers = ['o', 's', '^', 'D', 'x']
+    plt.figure(figsize=(8, 5.5))
+    for (tag, r), m in zip(results.items(), markers):
+        short = tag
+        plt.plot(snr_points, r['pd'], marker=m, linewidth=2, label=f'Variant {short}')
+    plt.xlabel('SNR (dB)')
+    plt.ylabel(r'$P_d$  ($\beta > \gamma$,  $H_1$)')
+    plt.title(r'Ablation: $P_d$ vs SNR — A→E architectural changes  ($P_{\rm fa}=0.01$)')
+    plt.xticks(snr_points)
+    plt.ylim(0, 1.05)
+    plt.grid(True, alpha=0.35)
+    plt.legend(fontsize=9)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Saved {out_path}")
+
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--plot-only', action='store_true',
+                        help='Load saved weights and regenerate ablation_pd_vs_snr.png without retraining')
+    args = parser.parse_args()
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Device: {device}\n")
+
+    if args.plot_only:
+        # Load data and evaluate saved checkpoints without retraining
+        train_2ch = torch.load('spectrum_data/train_noise.pt', weights_only=False)
+        train_1ch = train_2ch[:, 0:1, :]
+        test_dict   = torch.load('spectrum_data/test_data_full.pt', weights_only=False)
+        test_2ch    = test_dict['data']
+        test_1ch    = test_2ch[:, 0:1, :]
+        test_labels = test_dict['labels'].numpy()
+        test_snrs   = test_dict['snrs'].numpy()
+
+        ckpt_map = {
+            'A': ('spectrum_data/compare_A_lowcap-original.pth', LowCapOriginal(), train_1ch, test_1ch),
+            'B': ('spectrum_data/compare_B_lowcap-adam.pth',     LowCapOriginal(), train_1ch, test_1ch),
+            'C': ('spectrum_data/compare_C_lowcap-symdec.pth',   LowCapSymDec(),   train_1ch, test_1ch),
+            'D': ('spectrum_data/compare_D_convae-1ch.pth',      ConvAE(in_ch=1),  train_1ch, test_1ch),
+            'E': ('spectrum_data/compare_E_convae-2ch.pth',      ConvAE(in_ch=2),  train_2ch, test_2ch),
+        }
+        snr_points = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10]
+        results_plot = {}
+        for tag, (ckpt, model, tr_noise, te_data) in ckpt_map.items():
+            model.load_state_dict(torch.load(ckpt, weights_only=False, map_location=device))
+            model = model.to(device)
+            res = evaluate(model, tr_noise, te_data, test_labels, test_snrs, device)
+            results_plot[tag] = res
+            print(f"Variant {tag}: AUC={res['auc']:.4f}  gamma={res['gamma']:.4f}")
+        _plot_ablation(results_plot, snr_points)
+        import sys; sys.exit(0)
 
     # Data
     train_2ch = torch.load('spectrum_data/train_noise.pt', weights_only=False)
@@ -335,3 +391,5 @@ if __name__ == '__main__':
     Path('spectrum_data/compare_lowcap_convae_report.txt').write_text(
         report + '\n')
     print('\nSaved spectrum_data/compare_lowcap_convae_report.txt')
+
+    _plot_ablation(results, snr_points)

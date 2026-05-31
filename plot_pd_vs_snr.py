@@ -46,3 +46,22 @@ plt.tight_layout()
 plt.savefig("pd_vs_snr_combined.png", dpi=300, bbox_inches='tight')
 plt.close()
 print("Saved pd_vs_snr_combined.png")
+
+# 2-curve paper figure: LowCap-CAE1ch and Psl-CAE1ch (1ch pseudo-inv.) only
+if pd_pablos is None:
+    print("WARNING: pd_vs_snr_pablos.npy not found — run evaluate_pablos.py first")
+else:
+    plt.figure(figsize=(7, 5))
+    plt.plot(snr_points, pd_cae,    marker="s", linewidth=2, label="LowCap-CAE1ch")
+    plt.plot(snr_points, pd_pablos, marker="^", linewidth=2, label="Psl-CAE1ch")
+    plt.xlabel('SNR (dB)')
+    plt.ylabel(r'$P_d$  (Probability of Detection)')
+    plt.title(r'$P_d$ vs SNR  —  $P_{\rm fa} = 0.01$')
+    plt.legend()
+    plt.grid(True)
+    plt.xticks(snr_points)
+    plt.ylim(0, 1.05)
+    plt.tight_layout()
+    plt.savefig("pd_vs_snr_cae_psinn.png", dpi=300, bbox_inches='tight')
+    plt.close()
+    print("Saved pd_vs_snr_cae_psinn.png")

@@ -132,3 +132,124 @@ plt.subplots_adjust(bottom=0.18)
 plt.savefig("snr_distributions_all_-6dB.png", dpi=300, bbox_inches='tight')
 plt.close()
 print("Saved snr_distributions_all_-6dB.png")
+
+# 2-panel β histogram: CAE (LowCap-CAE1ch) and PsiNN (Psl-CAE1ch) only
+two_model_configs = [
+    ("LowCap-CAE1ch (CAE)",   b_cae, gamma_cae, "upper-tail"),
+    ("Psl-CAE1ch (PsiNN)",    b_pab, gamma_pab, "upper-tail"),
+]
+fig2, axes2 = plt.subplots(1, 2, figsize=(8, 3.8))
+for ax, (name, beta, gamma, tail) in zip(axes2, two_model_configs):
+    ax.hist(beta[h0], bins=40, alpha=0.65, color='steelblue',
+            label=r'$H_0$ (noise)', density=True)
+    ax.hist(beta[h1], bins=40, alpha=0.65, color='darkorange',
+            label=r'$H_1$ (signal)', density=True)
+    ax.axvline(gamma, color='red', linestyle='--', linewidth=1.5,
+               label=rf'$\gamma$  ($P_{{\rm fa}}={TARGET_PFA}$)')
+    ax.set_title(name, fontsize=10, fontweight='bold')
+    ax.set_xlabel(r'$\beta$ score', fontsize=9)
+    ax.set_ylabel('Density', fontsize=9)
+    ax.legend(fontsize=7.5, loc='upper left')
+    ax.grid(True, alpha=0.3)
+    ax.text(0.5, -0.20, f'({tail})', transform=ax.transAxes,
+            ha='center', fontsize=8, style='italic', color='gray')
+fig2.suptitle(
+    rf'$\beta$-score distributions at SNR $= {TARGET_SNR:+d}$\,dB'
+    rf'  ($P_{{\rm fa}} = {TARGET_PFA}$)',
+    fontsize=11
+)
+plt.tight_layout()
+plt.subplots_adjust(bottom=0.18)
+plt.savefig("beta_hist_cae_psinn.png", dpi=300, bbox_inches='tight')
+plt.close()
+print("Saved beta_hist_cae_psinn.png")
+
+# 2-panel MMSE (1-β) histogram: same two models
+fig3, axes3 = plt.subplots(1, 2, figsize=(8, 3.8))
+for ax, (name, beta, gamma, tail) in zip(axes3, two_model_configs):
+    mmse_h0 = 1.0 - beta[h0]
+    mmse_h1 = 1.0 - beta[h1]
+    mmse_thresh = 1.0 - gamma
+    ax.hist(mmse_h0, bins=40, alpha=0.65, color='steelblue',
+            label=r'$H_0$ (noise)', density=True)
+    ax.hist(mmse_h1, bins=40, alpha=0.65, color='darkorange',
+            label=r'$H_1$ (signal)', density=True)
+    ax.axvline(mmse_thresh, color='red', linestyle='--', linewidth=1.5,
+               label=rf'$\tau$  ($P_{{\rm fa}}={TARGET_PFA}$)')
+    ax.set_title(name, fontsize=10, fontweight='bold')
+    ax.set_xlabel(r'MMSE score ($1 - \beta$)', fontsize=9)
+    ax.set_ylabel('Density', fontsize=9)
+    ax.legend(fontsize=7.5, loc='upper right')
+    ax.grid(True, alpha=0.3)
+    ax.text(0.5, -0.20, '(lower-tail on MMSE = upper-tail on β)',
+            transform=ax.transAxes, ha='center', fontsize=7.5,
+            style='italic', color='gray')
+fig3.suptitle(
+    rf'MMSE ($1-\beta$) distributions at SNR $= {TARGET_SNR:+d}$\,dB'
+    rf'  ($P_{{\rm fa}} = {TARGET_PFA}$)',
+    fontsize=11
+)
+plt.tight_layout()
+plt.subplots_adjust(bottom=0.18)
+plt.savefig("mmse_hist_cae_psinn.png", dpi=300, bbox_inches='tight')
+plt.close()
+print("Saved mmse_hist_cae_psinn.png")
+
+# Multi-SNR 2×2 figures: one per SNR value (-6, 0, +6 dB)
+# Rows: β (top), MMSE (bottom)   Columns: LowCap-CAE1ch, Psl-CAE1ch
+for snr_val in [-6, 0, 6]:
+    snr_m = (snrs == snr_val)
+    h0_s  = snr_m & (labels == 0)
+    h1_s  = snr_m & (labels == 1)
+    if h0_s.sum() == 0 or h1_s.sum() == 0:
+        print(f"SNR={snr_val:+d} dB — not enough samples, skipping.")
+        continue
+
+    fig, axes = plt.subplots(2, 2, figsize=(10, 7))
+    fig.suptitle(
+        rf'$\beta$ and MMSE distributions at SNR $= {snr_val:+d}$\,dB'
+        rf'  ($P_{{\rm fa}} = {TARGET_PFA}$)',
+        fontsize=12
+    )
+
+    panel_labels = [['(a)', '(b)'], ['(c)', '(d)']]
+
+    for col, (name, beta, gamma) in enumerate([
+        ("LowCap-CAE1ch (CAE)",  b_cae, gamma_cae),
+        ("Psl-CAE1ch (PsiNN)",   b_pab, gamma_pab),
+    ]):
+        # β row
+        axes[0, col].hist(beta[h0_s], bins=40, alpha=0.65, color='steelblue',
+                          label=r'$H_0$ (noise)', density=True)
+        axes[0, col].hist(beta[h1_s], bins=40, alpha=0.65, color='darkorange',
+                          label=r'$H_1$ (signal)', density=True)
+        axes[0, col].axvline(gamma, color='red', linestyle='--', linewidth=1.5,
+                             label=rf'$\gamma$  ($P_{{\rm fa}}={TARGET_PFA}$)')
+        axes[0, col].set_title(name, fontsize=10, fontweight='bold')
+        axes[0, col].set_xlabel(r'$\beta$ score', fontsize=9)
+        axes[0, col].set_ylabel('Density', fontsize=9)
+        axes[0, col].legend(fontsize=7.5)
+        axes[0, col].grid(True, alpha=0.3)
+        axes[0, col].text(0.02, 0.97, panel_labels[0][col], transform=axes[0, col].transAxes,
+                          fontsize=11, fontweight='bold', va='top', ha='left')
+
+        # MMSE row (1 − β)
+        axes[1, col].hist(1 - beta[h0_s], bins=40, alpha=0.65, color='steelblue',
+                          label=r'$H_0$ (noise)', density=True)
+        axes[1, col].hist(1 - beta[h1_s], bins=40, alpha=0.65, color='darkorange',
+                          label=r'$H_1$ (signal)', density=True)
+        axes[1, col].axvline(1 - gamma, color='red', linestyle='--', linewidth=1.5,
+                             label=rf'$\tau$  ($P_{{\rm fa}}={TARGET_PFA}$)')
+        axes[1, col].set_title(name, fontsize=10, fontweight='bold')
+        axes[1, col].set_xlabel(r'MMSE ($1 - \beta$)', fontsize=9)
+        axes[1, col].set_ylabel('Density', fontsize=9)
+        axes[1, col].legend(fontsize=7.5)
+        axes[1, col].grid(True, alpha=0.3)
+        axes[1, col].text(0.02, 0.97, panel_labels[1][col], transform=axes[1, col].transAxes,
+                          fontsize=11, fontweight='bold', va='top', ha='left')
+
+    plt.tight_layout()
+    fname = f"beta_mmse_cae_psinn_{snr_val:+d}dB.png"
+    plt.savefig(fname, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Saved {fname}")
