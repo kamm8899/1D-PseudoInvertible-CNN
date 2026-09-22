@@ -15,6 +15,8 @@ import torch
 import numpy as np
 from pathlib import Path
 from scipy.signal import lfilter
+# Reviewer (c): hardware nonlinearity helpers; None settings retain the linear channel.
+from rf_nonlinearity import transmitter, receiver
 
 def _actual_snr_db(nominal_snr_db: float, uncertainty_db: float) -> float:
     """If uncertainty_db > 0, draw SNR uniformly in [nominal - u, nominal + u] (noise uncertainty)."""
@@ -90,9 +92,18 @@ def generate_iq_dataset(
     noise_per_snr:           int = 200,
     use_pulse_shaping:       bool = True,
     snr_uncertainty_db:      float = 0.0,
+    seed: int = 42,
+    # Reviewer (c): optional TX/RX compression controls, disabled by default.
+    tx_ibo_db: float | None = None,
+    rx_backoff_db: float | None = None,
+    rapp_p: float = 2.0,
+    snr_points=None,
 ):
     """
-    Training set : num_train pure-noise samples (normalized).
+    Training set : num_train clean pure-noise samples (normalized); never RX-distorted.
+    Nonlinearity : TX Rapp before received-power scaling/AWGN, RX Rapp after AWGN
+                   on both hypotheses. SNR refers to post-TX/pre-RX total signal power.
+                   No impairment changes RNG draws; seed pairs conditions.
     Test set     : fixed grid — 11 SNR points x 4 modulations x samples_per_mod_per_snr
                    signal samples + noise_per_snr noise samples per SNR point.
                    Guarantees exactly samples_per_mod_per_snr samples at every (mod, SNR) cell.
@@ -102,10 +113,20 @@ def generate_iq_dataset(
                          [nominal - u, nominal + u]. Labels/snrs in the returned tensors stay
                          at the nominal grid value so Pd vs nominal SNR stays well-defined.
     """
-    np.random.seed(42)
-    torch.manual_seed(42)
+    if min(num_train, samples_per_mod_per_snr, noise_per_snr) <= 0:
+        raise ValueError("Sample counts must be positive")
+    if length < 8 or length % 8:
+        raise ValueError("length must be a positive multiple of 8")
+    if not np.isfinite(snr_uncertainty_db) or snr_uncertainty_db < 0:
+        raise ValueError("snr_uncertainty_db must be finite and nonnegative")
+    if not np.isfinite(rapp_p) or rapp_p <= 0:
+        raise ValueError("rapp_p must be finite and positive")
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
     # ── Training set ────────────────────────────────────────────────────────
+    # Reviewer (c): keep training noise clean to test existing frozen models.
+    # Receiver-distorted calibration noise is generated in evaluate_nonlinearity.py.
     train_noise_raw = torch.randn(num_train, 2, length, dtype=torch.float32)
     mean            = train_noise_raw.mean(dim=[1, 2], keepdim=True)
     std             = train_noise_raw.std(dim=[1, 2],  keepdim=True)
@@ -115,7 +136,9 @@ def generate_iq_dataset(
     # Professor Ask: "Make sure you have enough samples per modulation for each SNR, e.g. 200 samples each."
     # Uses a fixed grid instead of random uniform SNR draws so every (modulation, SNR) cell
     # has exactly samples_per_mod_per_snr samples — including the edge points -10 and +10 dB.
-    snr_points  = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10]
+    snr_points = list(snr_points) if snr_points is not None else list(range(-10, 11, 2))
+    if not snr_points or not all(np.isfinite(s) for s in snr_points):
+        raise ValueError("snr_points must contain finite SNR values")
     modulations = ['qpsk', 'bpsk', '16qam', '32qam']
 
     _32qam_re = torch.tensor(
@@ -135,7 +158,11 @@ def generate_iq_dataset(
             for _ in range(samples_per_mod_per_snr):
                 sig        = _make_signal(mod, length, _32qam_re, _32qam_im, use_pulse_shaping)
                 snr_eff    = _actual_snr_db(snr_db, snr_uncertainty_db)
-                sample_raw = add_awgn(sig, snr_eff)                         # unnormalized
+                # Reviewer (c), H1: the PA compresses the pulse-shaped signal
+                # before channel noise is added; the RX compresses signal + noise.
+                sig = transmitter(sig, tx_ibo_db, rapp_p)
+                # Equal post-TX power SNR; received-power scaling compensates PA loss.
+                sample_raw = receiver(add_awgn(sig, snr_eff), rx_backoff_db, rapp_p)
                 sample     = (sample_raw - sample_raw.mean()) / sample_raw.std()  # normalized
                 test_data.append(sample)
                 test_data_raw.append(sample_raw)
@@ -146,6 +173,9 @@ def generate_iq_dataset(
         # noise_per_snr noise (H0) samples at this SNR point
         for _ in range(noise_per_snr):
             sample_raw = torch.randn(2, length, dtype=torch.float32)        # unnormalized
+            # Reviewer (c), H0: no transmitted signal means no TX distortion,
+            # but receiver compression still acts on noise and can change Pfa.
+            sample_raw = receiver(sample_raw, rx_backoff_db, rapp_p)
             sample     = (sample_raw - sample_raw.mean()) / sample_raw.std()  # normalized
             test_data.append(sample)
             test_data_raw.append(sample_raw)
@@ -161,6 +191,12 @@ def generate_iq_dataset(
     meta = {
         "use_pulse_shaping":  use_pulse_shaping,
         "snr_uncertainty_db": float(snr_uncertainty_db),
+        "seed": seed,
+        # Reviewer (c): save the operating point and SNR convention for reproducibility.
+        "nonlinearity": {"model": "rapp", "tx_ibo_db": tx_ibo_db,
+                         "rx_backoff_db": rx_backoff_db, "smoothness": rapp_p,
+                         "snr_reference": "post_tx_pre_rx_total_signal_power",
+                         "rx_noise_power_per_component": 1.0},
     }
 
     return train_noise, train_noise_raw, test_data, test_data_raw, test_labels, test_snrs, test_mods, meta
@@ -207,7 +243,25 @@ if __name__ == "__main__":
         default=0.0,
         help="Half-width (dB) for uniform SNR jitter around each nominal test SNR on H1 samples.",
     )
+    # Reviewer (c): CLI controls for saving separate nonlinear test datasets.
+    parser.add_argument("--tx-ibo-db", type=float, default=None)
+    parser.add_argument("--rx-backoff-db", type=float, default=None)
+    parser.add_argument("--rapp-p", type=float, default=2.0)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--samples-per-cell", type=int, default=200)
+    parser.add_argument("--noise-per-snr", type=int, default=200)
+    parser.add_argument("--skip-training-save", action="store_true",
+                        help="Preserve existing noise training files during robustness generation.")
     args = parser.parse_args()
+    if (args.tx_ibo_db is not None or args.rx_backoff_db is not None) and not args.tag:
+        parser.error("Nonlinear datasets require --tag to preserve the reference dataset")
+
+    # Keep the original reference datasets available for the linear comparison.
+    nonlinear = args.tx_ibo_db is not None or args.rx_backoff_db is not None
+    if nonlinear:
+        for stem in ("test_data", "test_data_raw"):
+            if Path(f"spectrum_data/{stem}_{args.tag}.pt").exists():
+                parser.error("Nonlinear generation refuses to overwrite existing test files; choose a new tag")
 
     use_pulse = not args.no_pulse_shaping
     print("Generating spectrum-sensing dataset (Option 1 - Pure Python)...")
@@ -217,12 +271,17 @@ if __name__ == "__main__":
         generate_iq_dataset(
             use_pulse_shaping=use_pulse,
             snr_uncertainty_db=args.snr_uncertainty_db,
+            seed=args.seed, tx_ibo_db=args.tx_ibo_db, rx_backoff_db=args.rx_backoff_db,
+            rapp_p=args.rapp_p, samples_per_mod_per_snr=args.samples_per_cell,
+            noise_per_snr=args.noise_per_snr,
         )
 
     Path("spectrum_data").mkdir(exist_ok=True)
 
-    torch.save(train_noise_raw, "spectrum_data/train_noise_raw.pt")   # unnormalized — Energy Detector H0
-    torch.save(train_noise,     "spectrum_data/train_noise.pt")        # normalized   — PsiNN / CAE
+    # A nonlinear test sweep must not replace the noise used to train checkpoints.
+    if not args.skip_training_save and not nonlinear:
+        torch.save(train_noise_raw, "spectrum_data/train_noise_raw.pt")
+        torch.save(train_noise, "spectrum_data/train_noise.pt")
 
     suffix = f"_{args.tag}" if args.tag else ""
     test_norm_path = f"spectrum_data/test_data{suffix}.pt"
@@ -239,7 +298,7 @@ if __name__ == "__main__":
     print("Dataset generation complete!")
     print(f"   Training samples : {train_noise.shape}  (pure noise only)")
     print(f"   Test samples     : {test_data.shape}  ({n_signal} signal, {n_noise} noise)")
-    print(f"   Per (mod, SNR)   : 200 signal samples at each of 11 SNR x 4 modulation cells")
+    print(f"   Per (mod, SNR)   : {args.samples_per_cell} signal samples at each of 11 SNR x 4 modulation cells")
     print(f"   Saved            : {test_norm_path} , {test_raw_path}")
     print("   CAE eval         : defaults to test_data_full.pt (set SPECTRUM_TEST_DATA_CAE for ablations)")
     print("   PsiNN/Pablos/ED  : require test_data_full.pt / test_data_raw_full.pt (see spectrum_paths.py)")

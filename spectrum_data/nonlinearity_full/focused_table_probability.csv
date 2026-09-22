@@ -1,0 +1,5 @@
+Modulation,SNR (dB),Linear CAE Pd (0–1),Linear Psi-NN Pd (0–1),Strong combined CAE Pd (0–1),Strong combined Psi-NN Pd (0–1)
+16-QAM,-10,0.307,0.756,0.290,0.717
+32-QAM,-10,0.282,0.715,0.263,0.684
+16-QAM,-6,0.780,0.997,0.751,0.995
+32-QAM,-6,0.751,0.997,0.737,0.995

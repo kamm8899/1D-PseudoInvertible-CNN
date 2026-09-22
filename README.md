@@ -110,7 +110,7 @@ This writes (among others):
 
 **Flags:** `--no-pulse-shaping`, `--tag <name>` for ablation copies (`test_data_<tag>.pt`). See `spectrum_paths.py` for **`SPECTRUM_TEST_DATA_*`** overrides.
 
-**Note:** `spectrum_data/evaluate_anomalies_cae.py` feeds the spectrum **`CAE`** with the **in-phase slice** of the **raw** packed tensors, `[:, 0:1, :]` (1×1024), while inverted PsiNN uses full **2×1024** I/Q from the normalized `data` field.
+**Note:** `spectrum_data/evaluate_anomalies_cae.py` feeds the spectrum **`CAE`** with the **in-phase slice** of the normalized packed tensors, `[:, 0:1, :]` (1×1024), while inverted PsiNN uses full **2×1024** normalized I/Q. The CAE script’s local variable `test_data_raw` is misleading: its default path is `test_data_full.pt`.
 
 ---
 
@@ -171,3 +171,13 @@ Plot legends and log strings for the combined figure and several evaluators are 
 ## License / attribution
 
 Copyright notice appears in `psinn_layer_1d.py` (Jessica Kamman / Jessica Sinn). Cite Pablos et al. (2022) when using the β / NP methodology in publications.
+
+## Hardware nonlinearity robustness (reviewer comment c)
+
+See [NONLINEARITY.md](NONLINEARITY.md) for the Rapp transmitter/receiver model, paired experiment, checkpoint choices, SNR convention, and statistical reporting. Start the transmitter sweep with:
+
+```bash
+.venv/bin/python evaluate_nonlinearity.py --output spectrum_data/nonlinearity_tx
+```
+
+The default compares the I-only paper models identified in `verify_mod_auc_10db.py`, without retraining. Outputs include per-modulation Pd, measured Pfa, ROC AUC, paired confidence intervals, and figures. Receiver and combined sweeps are optional. Existing experiment files are preserved.

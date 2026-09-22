@@ -1,0 +1,76 @@
+{
+  "output": "spectrum_data/nonlinearity_smoke",
+  "model_pair": "paper",
+  "cae_checkpoint": null,
+  "psi_checkpoint": null,
+  "tx_ibo_db": [
+    3.0
+  ],
+  "rx_backoff_db": [
+    6.0
+  ],
+  "combined": true,
+  "rapp_p": 2.0,
+  "seeds": [
+    101
+  ],
+  "snrs": [
+    -6.0,
+    6.0
+  ],
+  "samples_per_cell": 16,
+  "noise_per_snr": 32,
+  "calibration_samples": 256,
+  "pfa": 0.01,
+  "snr_uncertainty_db": 2.0,
+  "bootstrap": 200,
+  "batch_size": 32,
+  "threads": 2,
+  "device": "cpu",
+  "models": {
+    "CAE": {
+      "checkpoint": "/Users/lux/Desktop/Research_PSNN/spectrum_data/compare_A_lowcap-original.pth",
+      "sha256": "7ecef1c0ee8f85cb32a3afeb0deee6f2ade5f66b781c90f25a5eead6b9e955b1",
+      "class": "CAE",
+      "channels": 1,
+      "score": "beta",
+      "tail": "upper"
+    },
+    "PsiNN": {
+      "checkpoint": "/Users/lux/Desktop/Research_PSNN/spectrum_data/pablos_200epochs.pth",
+      "sha256": "3b3b0cb672c88bae11f46455aa795e8a039764c4cc0dce8158d861d99e9e9052",
+      "class": "AE_Pablos1d",
+      "channels": 1,
+      "score": "beta",
+      "tail": "upper"
+    }
+  },
+  "conditions": [
+    [
+      "linear",
+      null,
+      null
+    ],
+    [
+      "tx_3dB",
+      3.0,
+      null
+    ],
+    [
+      "rx_6dB",
+      null,
+      6.0
+    ],
+    [
+      "tx_3_rx_6dB",
+      3.0,
+      6.0
+    ]
+  ],
+  "torch_version": "2.10.0",
+  "normalization": "Joint I/Q sample mean/std, then channel slice",
+  "snr_reference": "Total distorted signal power after TX, before RX; PA loss compensated",
+  "calibration": "Independent H0 empirical 1-pfa quantile; upper tail, strict >",
+  "confidence_intervals": "95% Wilson Pd/Pfa; paired percentile bootstrap delta Pd, conditional on calibration and fixed weights",
+  "limitations": "Memoryless AM/AM only; original generator pulse shaping and constellation retained"
+}

@@ -1,0 +1,1 @@
+Sweep completed. See config.json for protocol and checkpoint hashes.
