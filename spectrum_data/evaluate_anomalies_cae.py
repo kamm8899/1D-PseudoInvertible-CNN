@@ -13,10 +13,9 @@ from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 from pathlib import Path
 import time
-from scipy.stats import norm   # for Q^{-1}(P_fa)
 
 from cae_spectrum import CAE
-from experiment_labels import ROC_SPECTRUM_CAE, TABLE_SPECTRUM_CAE
+from experiment_labels import PAPER_CAE_CHECKPOINT, ROC_SPECTRUM_CAE, TABLE_SPECTRUM_CAE
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -34,12 +33,12 @@ test_mods = np.array(test_dict["signals"])
 # CAE expects (N, 1, 1024) — use I channel only
 test_data = test_data_raw[:, 0:1, :]      # (N, 1, 1024)
 
-train_noise_raw = torch.load("spectrum_data/train_noise.pt", weights_only=False)
-train_noise = train_noise_raw[:, 0:1, :]  # (N, 1, 1024)
+calib_noise_full = torch.load("spectrum_data/calib_noise.pt", weights_only=False)
+calib_noise = calib_noise_full[:, 0:1, :]  # (N, 1, 1024)
 
 # ====================== LOAD MODEL ======================
 model_cae = CAE().to(device)
-model_cae.load_state_dict(torch.load("spectrum_data/cae_best.pth", weights_only=False))
+model_cae.load_state_dict(torch.load(PAPER_CAE_CHECKPOINT, weights_only=False))
 #model_cae = CAE().to(device)   # fresh model with random weights
 model_cae.eval()
 
@@ -60,23 +59,30 @@ def compute_beta(model, data):
             betas.append(beta.cpu())
     return torch.cat(betas).numpy()
 
-# ====================== TRAINING NOISE STATISTICS (H0) ======================
-print("Computing β on training noise (H0) for threshold estimation...")
-train_beta = compute_beta(model_cae, train_noise)
+# ====================== HELD-OUT CALIBRATION NOISE STATISTICS (H0) ======================
+print("Computing β on held-out calibration noise (H0) for threshold estimation...")
+beta_calib = compute_beta(model_cae, calib_noise)
 
-mu_e, sigma_e = np.mean(train_beta), np.std(train_beta)
+mu_e, sigma_e = np.mean(beta_calib), np.std(beta_calib)
 print(f"{TABLE_SPECTRUM_CAE} H0 β → mean = {mu_e:.4f},  std = {sigma_e:.4f}")
 
 # ====================== NEYMAN-PEARSON THRESHOLD γ (inverted, same as PsiNN + baseline) ======================
 # Signals reconstruct with higher β than noise under this CAE; anomaly = β > γ (upper tail on H0).
-# P_fa = P(β > γ | H0) = 1 - Φ((γ - μ)/σ)  →  γ = μ + Φ⁻¹(1 - P_fa)·σ
+# Advisor item 2: empirical upper-tail quantile of independent calibration H0.
+# The nominal Pfa is a target; measure the actual rate on separate test H0.
 target_pfa = 0.01
-gamma = mu_e + norm.ppf(1.0 - target_pfa) * sigma_e
+gamma = np.quantile(beta_calib, 1 - target_pfa)
 print(f"Target P_fa = {target_pfa} → γ (upper tail, β>γ detects signal) = {gamma:.4f}")
 
 # ====================== TEST SET EVALUATION ======================
 print("\nComputing β scores on test set...")
 beta_cae = compute_beta(model_cae, test_data)
+# Advisor item 2: report test-H0 false alarms and retain paired scores for bootstrap.
+measured_pfa = float(np.mean(beta_cae[test_labels == 0] > gamma))
+print(f"Measured test Pfa = {measured_pfa:.6f} (target {target_pfa})")
+np.save("spectrum_data/scores_calib_cae.npy", beta_calib)
+np.save("spectrum_data/scores_test_cae.npy", beta_cae)
+
 
 # ROC / AUC — higher β = more like signal (same orientation as evaluate_anomaly_inverted.py)
 fpr_cae, tpr_cae, thresholds_cae = roc_curve(test_labels, beta_cae)
@@ -105,6 +111,8 @@ with open("spectrum_data/evaluation_results_cae.txt", "w") as f:
     f.write(
         f"=== EVALUATION RESULTS — {TABLE_SPECTRUM_CAE} (β, upper-tail γ; same tail convention as inverted Psl-CNN) ===\n"
     )
+    f.write(f"Calibration: spectrum_data/calib_noise.pt; empirical quantile\n")
+    f.write(f"Measured test Pfa: {measured_pfa:.6f} (target {target_pfa})\n")
     f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
     f.write(f"{TABLE_SPECTRUM_CAE} AUC: {auc_cae:.4f}\n")
     f.write(f"{TABLE_SPECTRUM_CAE} γ (P_fa={target_pfa}): {gamma:.4f}\n")
@@ -136,7 +144,9 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
         continue
     fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
-    tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
+    # Use the held-out threshold, not a threshold selected from the test ROC.
+    signal_mask = mask & (test_labels == 1)
+    tpr_at_g = float(np.mean(beta_cae[signal_mask] > gamma)) if signal_mask.any() else np.nan
     label = f"[{snr_low:+d}, {snr_high:+d}) dB"
     print(f"{label:<16} {TABLE_SPECTRUM_CAE:<18} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
     print(f"{'─'*60}")
@@ -153,13 +163,19 @@ for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
         continue
     fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
-    tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
+    # Use the held-out threshold, not a threshold selected from the test ROC.
+    signal_mask = mask & (test_labels == 1)
+    tpr_at_g = float(np.mean(beta_cae[signal_mask] > gamma)) if signal_mask.any() else np.nan
     print(f"{mod:<16} {TABLE_SPECTRUM_CAE:<18} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
     print(f"{'─'*60}")
 
 # TPR for P_fa = 0.05
 target_pfa = 0.05
-gamma = mu_e + norm.ppf(1.0 - target_pfa) * sigma_e
+gamma = np.quantile(beta_calib, 1 - target_pfa)
+measured_pfa_05 = float(np.mean(beta_cae[test_labels == 0] > gamma))
+print(f"Measured test Pfa = {measured_pfa_05:.6f} (target {target_pfa})")
+with open("spectrum_data/evaluation_results_cae.txt", "a") as f:
+    f.write(f"Measured test Pfa: {measured_pfa_05:.6f} (target {target_pfa}); gamma={gamma:.8g}\n")
 print(f"\nTarget P_fa = {target_pfa} → γ = {gamma:.4f}")
 
 print(f"\n{'='*60}")
@@ -173,7 +189,9 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
         continue
     fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
-    tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
+    # Use the held-out threshold, not a threshold selected from the test ROC.
+    signal_mask = mask & (test_labels == 1)
+    tpr_at_g = float(np.mean(beta_cae[signal_mask] > gamma)) if signal_mask.any() else np.nan
     label = f"[{snr_low:+d}, {snr_high:+d}) dB"
     print(f"{label:<16} {TABLE_SPECTRUM_CAE:<18} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
     print(f"{'─'*60}")
@@ -189,13 +207,15 @@ for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
         continue
     fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta_cae[mask])
     auc_s = auc(fpr_s, tpr_s)
-    tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
+    # Use the held-out threshold, not a threshold selected from the test ROC.
+    signal_mask = mask & (test_labels == 1)
+    tpr_at_g = float(np.mean(beta_cae[signal_mask] > gamma)) if signal_mask.any() else np.nan
     print(f"{mod:<16} {TABLE_SPECTRUM_CAE:<18} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
     print(f"{'─'*60}")
 
 # ====================== DISTRIBUTION PLOTS ======================
 target_pfa = 0.01
-gamma = mu_e + norm.ppf(1.0 - target_pfa) * sigma_e
+gamma = np.quantile(beta_calib, 1 - target_pfa)
 
 plt.figure(figsize=(8,6))
 plt.hist(beta_cae[test_labels==0], bins=50, alpha=0.5, label=f'{ROC_SPECTRUM_CAE} noise (H0)')
@@ -224,7 +244,7 @@ plt.close()
 
 # ====================== β/MSE DISTRIBUTIONS AT -6, 0, +6 dB ======================
 target_pfa = 0.01
-gamma = mu_e + norm.ppf(1.0 - target_pfa) * sigma_e
+gamma = np.quantile(beta_calib, 1 - target_pfa)
 
 snr_descriptions = {
     -6: (
@@ -288,9 +308,11 @@ for snr_val in [-6, 0, 6]:
 
 # ====================== Pd vs SNR (Pfa = 0.01) ======================
 target_pfa = 0.01
-gamma      = mu_e + norm.ppf(1.0 - target_pfa) * sigma_e
+gamma      = np.quantile(beta_calib, 1 - target_pfa)
 
-snr_points = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10]
+# Derive the grid from the loaded dataset so added points such as -14 and
+# -12 dB cannot be silently omitted from the saved curve and AUC table.
+snr_points = np.unique(test_snr.astype(float))
 pd_cae_arr = []
 
 print(f"\n{'='*45}")
@@ -299,14 +321,15 @@ print(f"{'SNR (dB)':>10}  {'P_d':>10}  ({TABLE_SPECTRUM_CAE})")
 print(f"{'─'*45}")
 
 for snr_db in snr_points:
-    sig_mask = (test_snr == snr_db) & (test_labels == 1)
+    sig_mask = np.isclose(test_snr, snr_db) & (test_labels == 1)
     pd_c = float(np.mean(beta_cae[sig_mask] > gamma)) if sig_mask.sum() > 0 else np.nan
     pd_cae_arr.append(pd_c)
-    print(f"{snr_db:>10d}  {pd_c:>10.4f}")
+    print(f"{snr_db:>10g}  {pd_c:>10.4f}")
 
 print(f"{'─'*45}")
 
 np.save("spectrum_data/pd_vs_snr_cae.npy", np.array(pd_cae_arr))
+np.save("spectrum_data/snr_points.npy", snr_points)
 print("Saved pd_vs_snr_cae.npy")
 
 # ====================== AUC PER MODULATION × SNR TABLE ======================
@@ -320,7 +343,7 @@ print("─" * 80)
 for mod in modulations_list:
     row = f"{mod:<12}"
     for snr_db in snr_points:
-        snr_mask = (test_snr == snr_db)
+        snr_mask = np.isclose(test_snr, snr_db)
         mask = (snr_mask & (test_mods == mod)) | (snr_mask & (test_labels == 0))
         if mask.sum() == 0 or len(np.unique(test_labels[mask])) < 2:
             row += "    N/A"

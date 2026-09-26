@@ -2,7 +2,8 @@
 Option 1 - Pure Python Synthetic Generator
 For 1D Psl-CNN Spectrum Sensing Anomaly Detection
 Author: Jessica Kamman
-Date: April 2026
+Date: April 2026 (updated Sept 2026: single samples-per-symbol, random timing,
+      steady-state crop, symmetric cross 32-QAM)
 '''
 
 import argparse
@@ -19,7 +20,7 @@ from scipy.signal import lfilter
 from rf_nonlinearity import transmitter, receiver
 
 def _actual_snr_db(nominal_snr_db: float, uncertainty_db: float) -> float:
-    """If uncertainty_db > 0, draw SNR uniformly in [nominal - u, nominal + u] (noise uncertainty)."""
+    """Draw SNR uniformly in [nominal-u, nominal+u] with a fixed noise floor."""
     if uncertainty_db <= 0:
         return float(nominal_snr_db)
     delta = (torch.rand(()).item() * 2.0 - 1.0) * uncertainty_db
@@ -42,46 +43,62 @@ def add_awgn(signal: torch.Tensor, snr_db: float, noise_floor: float = 1.0) -> t
 #     noise = torch.sqrt(noise_power / 2.0) * torch.randn_like(signal)
 #     return signal + noise
 
+# Proper cross 32-QAM: 6x6 grid minus the four corners (zero-mean, symmetric).
+_CROSS32 = [complex(x, y) for x in (-5, -3, -1, 1, 3, 5) for y in (-5, -3, -1, 1, 3, 5)
+            if not (abs(x) == 5 and abs(y) == 5)]
+
+
+def _raised_cosine(samples_per_symbol: int, alpha: float = 0.35) -> np.ndarray:
+    num_taps = 8 * samples_per_symbol + 1
+    t  = np.arange(num_taps) - num_taps // 2
+    T  = samples_per_symbol
+    rc = np.sinc(t / T) * np.cos(np.pi * alpha * t / T) / (1 - (2 * alpha * t / T) ** 2 + 1e-8)
+    return rc / rc.sum()
+
+
 def _make_signal(
     mod: str,
     length: int,
-    _32qam_re,
-    _32qam_im,
     use_pulse_shaping: bool = True,
+    samples_per_symbol: int = 4,
+    random_timing: bool = True,
 ) -> torch.Tensor:
-    """Generate one normalized IQ signal for the given modulation."""
+    """Generate one peak-normalized IQ block (2, length) for the given modulation.
+
+    All modulations use the same samples_per_symbol (the receiver's sampling rate does
+    not depend on the modulation). With random_timing, extra symbols are generated, the
+    raised-cosine start-up transient is discarded, and the block starts at a random
+    sample offset within a symbol, so symbol boundaries are not aligned to the block.
+    """
+    sps = int(samples_per_symbol)
+    rc = _raised_cosine(sps) if use_pulse_shaping else None
+    guard = (len(rc) if rc is not None else 0) + sps          # transient + max offset
+    n_sym = -(-(length + guard) // sps)                        # ceil division
+
     if mod == 'qpsk':
-        symbols = torch.tensor([1+1j, 1-1j, -1+1j, -1-1j])[torch.randint(0, 4, (length//8,))]
-        signal  = torch.repeat_interleave(symbols, 8)
-        samples_per_symbol = 8
+        symbols = torch.tensor([1+1j, 1-1j, -1+1j, -1-1j])[torch.randint(0, 4, (n_sym,))]
     elif mod == 'bpsk':
-        symbols = torch.tensor([1, -1])[torch.randint(0, 2, (length//4,))]
-        signal  = torch.repeat_interleave(symbols, 4) + 0j
-        samples_per_symbol = 4
+        symbols = torch.tensor([1, -1])[torch.randint(0, 2, (n_sym,))] + 0j
     elif mod == '16qam':
-        re = torch.tensor([-3, -1, 1, 3])[torch.randint(0, 4, (length//4,))]
-        im = torch.tensor([-3, -1, 1, 3])[torch.randint(0, 4, (length//4,))]
-        signal = torch.repeat_interleave(re + 1j * im, 4)
-        samples_per_symbol = 4
-    else:  # 32-QAM cross constellation
-        idx    = torch.randint(0, 32, (length//4,))
-        signal = torch.repeat_interleave(_32qam_re[idx] + 1j * _32qam_im[idx], 4)
-        samples_per_symbol = 4
+        re = torch.tensor([-3., -1., 1., 3.])[torch.randint(0, 4, (n_sym,))]
+        im = torch.tensor([-3., -1., 1., 3.])[torch.randint(0, 4, (n_sym,))]
+        symbols = re + 1j * im
+    elif mod == '32qam':
+        symbols = torch.tensor(_CROSS32)[torch.randint(0, 32, (n_sym,))]
+    else:
+        raise ValueError(f"unknown modulation {mod}")
 
-    iq = torch.stack([signal.real, signal.imag], dim=0).squeeze(1)
+    signal = torch.repeat_interleave(symbols, sps)
+    iq = np.stack([signal.real.numpy(), signal.imag.numpy()]).astype(np.float64)
 
-    if use_pulse_shaping:
-        # Raised cosine pulse shaping — roll-off 0.35, added per professor guidance
-        num_taps = 8 * samples_per_symbol + 1
-        t        = np.arange(num_taps) - num_taps // 2
-        alpha    = 0.35
-        T        = samples_per_symbol
-        rc       = np.sinc(t / T) * np.cos(np.pi * alpha * t / T) / (1 - (2 * alpha * t / T) ** 2 + 1e-8)
-        rc      /= rc.sum()
-        signal_i = lfilter(rc, 1.0, iq[0].numpy())
-        signal_q = lfilter(rc, 1.0, iq[1].numpy())
-        iq       = torch.tensor(np.stack([signal_i, signal_q]), dtype=torch.float32)
+    if rc is not None:
+        # Raised cosine pulse shaping, roll-off 0.35
+        iq = np.stack([lfilter(rc, 1.0, iq[0]), lfilter(rc, 1.0, iq[1])])
 
+    start = (len(rc) if rc is not None else 0)
+    if random_timing:
+        start += int(torch.randint(0, sps, ()).item())
+    iq = torch.tensor(iq[:, start:start + length], dtype=torch.float32)
     return iq / torch.abs(iq).max()
 
 
@@ -92,6 +109,8 @@ def generate_iq_dataset(
     noise_per_snr:           int = 200,
     use_pulse_shaping:       bool = True,
     snr_uncertainty_db:      float = 0.0,
+    samples_per_symbol:      int = 4,
+    random_timing:           bool = True,
     seed: int = 42,
     # Reviewer (c): optional TX/RX compression controls, disabled by default.
     tx_ibo_db: float | None = None,
@@ -119,6 +138,8 @@ def generate_iq_dataset(
         raise ValueError("length must be a positive multiple of 8")
     if not np.isfinite(snr_uncertainty_db) or snr_uncertainty_db < 0:
         raise ValueError("snr_uncertainty_db must be finite and nonnegative")
+    if samples_per_symbol < 1:
+        raise ValueError("samples_per_symbol must be >= 1")
     if not np.isfinite(rapp_p) or rapp_p <= 0:
         raise ValueError("rapp_p must be finite and positive")
     np.random.seed(seed)
@@ -141,22 +162,14 @@ def generate_iq_dataset(
         raise ValueError("snr_points must contain finite SNR values")
     modulations = ['qpsk', 'bpsk', '16qam', '32qam']
 
-    _32qam_re = torch.tensor(
-        [-5,-3,-1,1,3,5, -5,-3,-1,1,3,5, -5,-3,-1,1,3,5,
-         -5,-3,-1,1,3,5, -3,-1,1,3,       -3,-1,1,3],
-        dtype=torch.float32)
-    _32qam_im = torch.tensor(
-        [-5,-5,-5,-5,-5,-5, -3,-3,-3,-3,-3,-3, -1,-1,-1,-1,-1,-1,
-          1, 1, 1, 1, 1, 1,  3, 3, 3, 3,        5, 5, 5, 5],
-        dtype=torch.float32)
-
     test_data, test_data_raw, test_labels, test_snrs, test_mods = [], [], [], [], []
 
     for snr_db in snr_points:
         # Exactly samples_per_mod_per_snr signal samples per modulation at this SNR
         for mod in modulations:
             for _ in range(samples_per_mod_per_snr):
-                sig        = _make_signal(mod, length, _32qam_re, _32qam_im, use_pulse_shaping)
+                sig        = _make_signal(mod, length, use_pulse_shaping,
+                                          samples_per_symbol, random_timing)
                 snr_eff    = _actual_snr_db(snr_db, snr_uncertainty_db)
                 # Reviewer (c), H1: the PA compresses the pulse-shaped signal
                 # before channel noise is added; the RX compresses signal + noise.
@@ -191,6 +204,9 @@ def generate_iq_dataset(
     meta = {
         "use_pulse_shaping":  use_pulse_shaping,
         "snr_uncertainty_db": float(snr_uncertainty_db),
+        "samples_per_symbol": int(samples_per_symbol),
+        "random_timing": bool(random_timing),
+        "qam32": "cross (6x6 minus corners)",
         "seed": seed,
         # Reviewer (c): save the operating point and SNR convention for reproducibility.
         "nonlinearity": {"model": "rapp", "tx_ibo_db": tx_ibo_db,
@@ -243,6 +259,10 @@ if __name__ == "__main__":
         default=0.0,
         help="Half-width (dB) for uniform SNR jitter around each nominal test SNR on H1 samples.",
     )
+    parser.add_argument("--sps", type=int, default=4,
+                        help="Samples per symbol, identical for all modulations (default 4).")
+    parser.add_argument("--no-random-timing", action="store_true",
+                        help="Align symbol boundaries to the block start (legacy behavior).")
     # Reviewer (c): CLI controls for saving separate nonlinear test datasets.
     parser.add_argument("--tx-ibo-db", type=float, default=None)
     parser.add_argument("--rx-backoff-db", type=float, default=None)
@@ -250,6 +270,8 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--samples-per-cell", type=int, default=200)
     parser.add_argument("--noise-per-snr", type=int, default=200)
+    parser.add_argument("--snr-points", type=int, nargs="+", default=None,
+                        help="SNR grid in dB (default: -10 -8 ... 10)")
     parser.add_argument("--skip-training-save", action="store_true",
                         help="Preserve existing noise training files during robustness generation.")
     args = parser.parse_args()
@@ -265,15 +287,19 @@ if __name__ == "__main__":
 
     use_pulse = not args.no_pulse_shaping
     print("Generating spectrum-sensing dataset (Option 1 - Pure Python)...")
-    print(f"   pulse_shaping={use_pulse}  snr_uncertainty_db={args.snr_uncertainty_db}")
+    print(f"   pulse_shaping={use_pulse}  snr_uncertainty_db={args.snr_uncertainty_db}  "
+          f"sps={args.sps}  random_timing={not args.no_random_timing}")
 
     train_noise, train_noise_raw, test_data, test_data_raw, test_labels, test_snrs, test_mods, meta = \
         generate_iq_dataset(
             use_pulse_shaping=use_pulse,
             snr_uncertainty_db=args.snr_uncertainty_db,
+            samples_per_symbol=args.sps,
+            random_timing=not args.no_random_timing,
             seed=args.seed, tx_ibo_db=args.tx_ibo_db, rx_backoff_db=args.rx_backoff_db,
             rapp_p=args.rapp_p, samples_per_mod_per_snr=args.samples_per_cell,
             noise_per_snr=args.noise_per_snr,
+            snr_points=args.snr_points,
         )
 
     Path("spectrum_data").mkdir(exist_ok=True)

@@ -1,6 +1,9 @@
 === EVALUATION RESULTS — CAE1ch - LowCap (β, upper-tail γ; same tail convention as inverted Psl-CNN) ===
-Date: 2026-05-13 19:01:47
+Calibration: spectrum_data/calib_noise.pt; empirical quantile
+Measured test Pfa: 0.010769 (target 0.01)
+Date: 2026-09-26 17:06:04
 
-CAE1ch - LowCap AUC: 0.9847
-CAE1ch - LowCap γ (P_fa=0.01): 0.0580
+CAE1ch - LowCap AUC: 0.9489
+CAE1ch - LowCap γ (P_fa=0.01): 0.0592
 CAE1ch - LowCap parameters: 52,977
+Measured test Pfa: 0.054385 (target 0.05); gamma=0.052266471

@@ -19,14 +19,13 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import torch
 import numpy as np
 
-from experiment_labels import ROC_PABLOS_STYLE, TABLE_PABLOS_STYLE
+from experiment_labels import PAPER_PSINN_CHECKPOINT, ROC_PABLOS_STYLE, TABLE_PABLOS_STYLE
 
 from spectrum_paths import get_psinn_test_data_path, assert_psinn_full_channel_metadata
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 from pathlib import Path
 import time
-from scipy.stats import norm
 
 from psinn_layer_1d_pablos import AE_Pablos1d
 
@@ -43,12 +42,12 @@ test_labels = test_dict["labels"].numpy()
 test_snr    = test_dict["snrs"].numpy()
 test_mods   = np.array(test_dict["signals"])
 
-train_noise_full = torch.load("spectrum_data/train_noise.pt", weights_only=False)
-train_noise      = train_noise_full[:, 0:1, :]     # (N, 1, 1024)
+calib_noise_full = torch.load("spectrum_data/calib_noise.pt", weights_only=False)
+calib_noise      = calib_noise_full[:, 0:1, :]     # (N, 1, 1024)
 
 # ====================== LOAD MODEL ======================
 model = AE_Pablos1d(nf=16, k=5, use_dropout=True).to(device)
-model.load_state_dict(torch.load("spectrum_data/pablos_200epochs.pth", weights_only=False))
+model.load_state_dict(torch.load(PAPER_PSINN_CHECKPOINT, weights_only=False))
 model.eval()
 print(f"Loaded {TABLE_PABLOS_STYLE} (`AE_Pablos1d`) — {sum(p.numel() for p in model.parameters()):,} parameters")
 
@@ -70,18 +69,24 @@ def compute_beta(model, data):
 
 
 # ====================== H0 STATISTICS ======================
-print("Computing β on training noise (H0) for threshold estimation...")
-train_beta = compute_beta(model, train_noise)
-mu, sigma  = np.mean(train_beta), np.std(train_beta)
+print("Computing β on held-out calibration noise (H0) for threshold estimation...")
+beta_calib = compute_beta(model, calib_noise)
+mu, sigma  = np.mean(beta_calib), np.std(beta_calib)
 print(f"{TABLE_PABLOS_STYLE} H0 β → mean = {mu:.4f}, std = {sigma:.4f}")
 
 target_pfa = 0.01
-gamma = mu + norm.ppf(1 - target_pfa) * sigma
+gamma = np.quantile(beta_calib, 1 - target_pfa)
 print(f"Target P_fa = {target_pfa} → γ = {gamma:.4f}")
 
 # ====================== TEST SET EVALUATION ======================
 print("\nComputing β scores on test set...")
 beta = compute_beta(model, test_data)
+# Advisor item 2: report test-H0 false alarms and retain paired scores for bootstrap.
+measured_pfa = float(np.mean(beta[test_labels == 0] > gamma))
+print(f"Measured test Pfa = {measured_pfa:.6f} (target {target_pfa})")
+np.save("spectrum_data/scores_calib_psinn.npy", beta_calib)
+np.save("spectrum_data/scores_test_psinn.npy", beta)
+
 
 fpr, tpr, _ = roc_curve(test_labels, beta)
 auc_score   = auc(fpr, tpr)
@@ -99,6 +104,8 @@ for f in out_dir.glob("*.png"):
 
 with open("spectrum_data/evaluation_results_pablos.txt", "w") as f:
     f.write(f"=== {TABLE_PABLOS_STYLE} (`AE_Pablos1d`) — evaluation ===\n")
+    f.write(f"Calibration: spectrum_data/calib_noise.pt; empirical quantile\n")
+    f.write(f"Measured test Pfa: {measured_pfa:.6f} (target {target_pfa})\n")
     f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
     f.write(f"AUC:        {auc_score:.4f}\n")
     f.write(f"γ (Pfa=0.01): {gamma:.4f}\n")
@@ -195,7 +202,9 @@ for snr_low, snr_high in [(-10, -5), (-5, 0), (0, 5), (5, 10)]:
         continue
     fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta[mask])
     auc_s = auc(fpr_s, tpr_s)
-    tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
+    # Use the held-out threshold, not a threshold selected from the test ROC.
+    signal_mask = mask & (test_labels == 1)
+    tpr_at_g = float(np.mean(beta[signal_mask] > gamma)) if signal_mask.any() else np.nan
     print(f"[{snr_low:+d}, {snr_high:+d}) dB  {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
 
 # ====================== TPR BY MODULATION ======================
@@ -210,11 +219,15 @@ for mod in ['qpsk', 'bpsk', '16qam', '32qam']:
         continue
     fpr_s, tpr_s, _ = roc_curve(test_labels[mask], beta[mask])
     auc_s = auc(fpr_s, tpr_s)
-    tpr_at_g = tpr_s[np.searchsorted(fpr_s, target_pfa, side='right') - 1]
+    # Use the held-out threshold, not a threshold selected from the test ROC.
+    signal_mask = mask & (test_labels == 1)
+    tpr_at_g = float(np.mean(beta[signal_mask] > gamma)) if signal_mask.any() else np.nan
     print(f"{mod:<12} {auc_s:>6.4f}  {tpr_at_g:>8.4f}")
 
 # ====================== Pd vs SNR ======================
-snr_points = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10]
+# Derive the grid from the loaded dataset so added points such as -14 and
+# -12 dB cannot be silently omitted from the saved curve.
+snr_points = np.unique(test_snr.astype(float))
 pd_arr = []
 
 print(f"\n{'='*40}")
@@ -223,12 +236,13 @@ print(f"{'SNR (dB)':>10}  {'P_d':>12}")
 print(f"{'─'*40}")
 
 for snr_db in snr_points:
-    sig_mask = (test_snr == snr_db) & (test_labels == 1)
+    sig_mask = np.isclose(test_snr, snr_db) & (test_labels == 1)
     pd_val = float(np.mean(beta[sig_mask] > gamma)) if sig_mask.sum() > 0 else np.nan
     pd_arr.append(pd_val)
-    print(f"{snr_db:>10d}  {pd_val:>12.4f}")
+    print(f"{snr_db:>10g}  {pd_val:>12.4f}")
 
 print(f"{'─'*40}")
 np.save("spectrum_data/pd_vs_snr_pablos.npy", np.array(pd_arr))
+np.save("spectrum_data/snr_points.npy", snr_points)
 print("Saved spectrum_data/pd_vs_snr_pablos.npy")
 print("✅ Evaluation complete!")

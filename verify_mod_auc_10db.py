@@ -1,6 +1,6 @@
 """
 Verify per-modulation AUC at -10 dB for the 1ch paper models:
-  CAE  = compare_A_lowcap-original.pth  (LowCapOriginal, Model A)
+  CAE  = cae_best.pth (advisor-confirmed paper checkpoint)
   PsiNN = pablos_200epochs.pth          (AE_Pablos1d)
 
 Prints the AUC range at -10 dB for both models so the paper text can be checked.
@@ -11,11 +11,11 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import torch
 import numpy as np
 from sklearn.metrics import roc_curve, auc
-from scipy.stats import norm
 import torch.nn as nn
 import torch.nn.functional as F
 
 from psinn_layer_1d_pablos import AE_Pablos1d
+from experiment_labels import PAPER_CAE_CHECKPOINT, PAPER_PSINN_CHECKPOINT
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -55,17 +55,17 @@ test_labels = test_dict["labels"].numpy()
 test_snr    = test_dict["snrs"].numpy()
 test_mods   = np.array(test_dict["signals"])
 
-train_noise = torch.load("spectrum_data/train_noise.pt", weights_only=False)
-train_1ch   = train_noise[:, 0:1, :]
+calib_noise = torch.load("spectrum_data/calib_noise.pt", weights_only=False)
+calib_1ch   = calib_noise[:, 0:1, :]
 
 # ── Load models ───────────────────────────────────────────────────────────────
 cae = LowCapOriginal().to(device)
-cae.load_state_dict(torch.load("spectrum_data/compare_A_lowcap-original.pth",
+cae.load_state_dict(torch.load(PAPER_CAE_CHECKPOINT,
                                 weights_only=False, map_location=device))
 cae.eval()
 
 psinn = AE_Pablos1d(nf=16, k=5, use_dropout=True).to(device)
-psinn.load_state_dict(torch.load("spectrum_data/pablos_200epochs.pth",
+psinn.load_state_dict(torch.load(PAPER_PSINN_CHECKPOINT,
                                   weights_only=False, map_location=device))
 psinn.eval()
 
@@ -86,19 +86,25 @@ def compute_beta(model, data, use_ae=False):
     return torch.cat(betas).numpy()
 
 
-# ── Thresholds from training noise ────────────────────────────────────────────
-beta_cae_train   = compute_beta(cae,   train_1ch, use_ae=False)
-beta_psinn_train = compute_beta(psinn, train_1ch, use_ae=True)
+# ── Thresholds from held-out calibration noise ────────────────────────────────────────────
+beta_cae_calib   = compute_beta(cae,   calib_1ch, use_ae=False)
+beta_psinn_calib = compute_beta(psinn, calib_1ch, use_ae=True)
 
 pfa = 0.01
-gamma_cae   = np.mean(beta_cae_train)   + norm.ppf(1 - pfa) * np.std(beta_cae_train)
-gamma_psinn = np.mean(beta_psinn_train) + norm.ppf(1 - pfa) * np.std(beta_psinn_train)
+gamma_cae   = np.quantile(beta_cae_calib, 1 - pfa)
+gamma_psinn = np.quantile(beta_psinn_calib, 1 - pfa)
 print(f"CAE   γ = {gamma_cae:.4f}")
 print(f"PsiNN γ = {gamma_psinn:.4f}")
 
 # ── Test beta scores ──────────────────────────────────────────────────────────
 beta_cae   = compute_beta(cae,   test_data, use_ae=False)
 beta_psinn = compute_beta(psinn, test_data, use_ae=True)
+
+# Advisor item 2: measure false alarms at the calibrated operating points.
+for name, beta_test, gamma in [("CAE", beta_cae, gamma_cae), ("PsiNN", beta_psinn, gamma_psinn)]:
+    measured_pfa = float(np.mean(beta_test[test_labels == 0] > gamma))
+    print(f"{name} measured test Pfa = {measured_pfa:.6f} (target {pfa})")
+
 
 # ── Per-modulation AUC at -10 dB ─────────────────────────────────────────────
 SNR_TARGET = -10

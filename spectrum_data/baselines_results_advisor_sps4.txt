@@ -1,0 +1,22 @@
+test file: spectrum_data/test_data_raw_advisor_sps4.pt
+calibration file: spectrum_data/calib_noise_raw.pt
+generation: {'use_pulse_shaping': True, 'snr_uncertainty_db': 2.0, 'samples_per_symbol': 4, 'random_timing': True, 'qam32': 'cross (6x6 minus corners)', 'seed': 42, 'nonlinearity': {'model': 'rapp', 'tx_ibo_db': None, 'rx_backoff_db': None, 'smoothness': 2.0, 'snr_reference': 'post_tx_pre_rx_total_signal_power', 'rx_noise_power_per_component': 1.0}}
+target Pfa: 0.01
+Test-set +/-dB variation: SNR uncertainty with fixed noise floor
+ED uncertainty curve: +/-2 dB noise-power uncertainty
+
+detector             -14     -12     -10      -8      -6      -4      -2       0       2       4       6       8      10   meas.Pfa
+mme_L4             0.188   0.440   0.721   0.943   0.996   1.000   1.000   1.000   1.000   1.000   1.000   1.000   1.000   0.0100
+cav_L4             0.219   0.487   0.768   0.960   0.998   1.000   1.000   1.000   1.000   1.000   1.000   1.000   1.000   0.0098
+mme_L8             0.179   0.417   0.695   0.930   0.996   1.000   1.000   1.000   1.000   1.000   1.000   1.000   1.000   0.0092
+cav_L8             0.200   0.454   0.735   0.949   0.998   1.000   1.000   1.000   1.000   1.000   1.000   1.000   1.000   0.0109
+ed                 0.149   0.333   0.592   0.847   0.984   0.999   1.000   1.000   1.000   1.000   1.000   1.000   1.000   0.0099
+ed_unc2dB          0.000   0.000   0.000   0.000   0.018   0.135   0.477   0.843   1.000   1.000   1.000   1.000   1.000   0.0000
+
+Per-modulation Pd at -14 dB:
+  mme_L4          qpsk=0.117  bpsk=0.435  16qam=0.093  32qam=0.106
+  cav_L4          qpsk=0.138  bpsk=0.502  16qam=0.109  32qam=0.126
+  mme_L8          qpsk=0.099  bpsk=0.432  16qam=0.091  32qam=0.096
+  cav_L8          qpsk=0.115  bpsk=0.482  16qam=0.100  32qam=0.102
+  ed              qpsk=0.099  bpsk=0.320  16qam=0.090  32qam=0.089
+  ed_unc2dB       qpsk=0.000  bpsk=0.000  16qam=0.000  32qam=0.000

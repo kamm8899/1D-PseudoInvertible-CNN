@@ -1,6 +1,8 @@
-=== Pablos-style AE (`AE_Pablos1d`) — evaluation ===
-Date: 2026-05-13 19:03:37
+=== Psi-NN (I-only) (`AE_Pablos1d`) — evaluation ===
+Calibration: spectrum_data/calib_noise.pt; empirical quantile
+Measured test Pfa: 0.010769 (target 0.01)
+Date: 2026-09-26 17:03:03
 
-AUC:        0.9986
-γ (Pfa=0.01): 0.2013
+AUC:        0.9819
+γ (Pfa=0.01): 0.2020
 Parameters: 46,736

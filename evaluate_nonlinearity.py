@@ -22,6 +22,7 @@ import torch
 from sklearn.metrics import roc_auc_score
 
 from cae_spectrum import CAE
+from experiment_labels import PAPER_CAE_CHECKPOINT, PAPER_PSINN_CHECKPOINT
 from generate_spectrum_dataset import generate_iq_dataset
 from psinn_layer_1d import AE_Classifier1d
 from psinn_layer_1d_pablos import AE_Pablos1d
@@ -89,8 +90,8 @@ def load_models(args, device):
     # frozen so this experiment measures robustness without adaptation training.
     if args.model_pair == "paper":
         psi = AE_Pablos1d(nf=16, k=5, use_dropout=True)
-        cae_path = ROOT / "spectrum_data/compare_A_lowcap-original.pth"
-        psi_path = ROOT / "spectrum_data/pablos_200epochs.pth"
+        cae_path = ROOT / PAPER_CAE_CHECKPOINT
+        psi_path = ROOT / PAPER_PSINN_CHECKPOINT
         channels = 1
     else:
         channels = 2 if args.model_pair == "legacy" else 1
@@ -183,7 +184,7 @@ def main():
     config.update(models=provenance, conditions=conditions, torch_version=torch.__version__,
                   normalization="Joint I/Q sample mean/std, then channel slice",
                   snr_reference="Total distorted signal power after TX, before RX; PA loss compensated",
-                  calibration="Independent H0 empirical 1-pfa quantile; upper tail, strict >",
+                  calibration="Independent H0 empirical 1-pfa quantile (linear interpolation); upper tail, strict >",
                   confidence_intervals="95% Wilson Pd/Pfa; paired percentile bootstrap delta Pd, conditional on calibration and fixed weights",
                   limitations="Memoryless AM/AM only; original generator pulse shaping and constellation retained")
     (args.output / "config.json").write_text(json.dumps(config, indent=2) + "\n")
@@ -192,13 +193,15 @@ def main():
         # Independent RNG streams; same underlying H0 across impairment settings.
         cal_rng = torch.Generator().manual_seed(seed + 2**32)
         calibration = torch.randn(args.calibration_samples, 2, 1024, generator=cal_rng)
+        # Advisor item 2: use NumPy default quantile interpolation consistently.
+        # Independent simulated calibration remains separate from training and test H0.
         thresholds = {}
         # RX compression changes H0, so calibrate it before input normalization.
         # TX does not affect H0 and therefore needs no separate noise threshold.
         for rx in [None] + args.rx_backoff_db:
             cal_data = normalize(receiver(calibration, rx, args.rapp_p))
             thresholds[rx] = {name: float(np.quantile(scores(model, cal_data, nch, args.device, args.batch_size),
-                                                       1 - args.pfa, method="higher"))
+                                                       1 - args.pfa))
                               for name, (model, nch) in models.items()}
         for condition, tx, rx in conditions:
             print(f"seed={seed} condition={condition}", flush=True)

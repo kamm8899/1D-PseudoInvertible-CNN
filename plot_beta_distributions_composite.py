@@ -14,6 +14,7 @@ from scipy.stats import norm
 from psinn_layer_1d import AE_Classifier1d, AE_Baseline_Classifier1d
 from cae_spectrum import CAE
 from psinn_layer_1d_pablos import AE_Pablos1d
+from experiment_labels import PAPER_CAE_CHECKPOINT, PAPER_PSINN_CHECKPOINT
 
 device     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 TARGET_SNR = -6
@@ -49,11 +50,11 @@ model_base.load_state_dict(torch.load("spectrum_data/baseline_200epochs.pth", we
 model_base.eval()
 
 model_cae = CAE().to(device)
-model_cae.load_state_dict(torch.load("spectrum_data/cae_best.pth", weights_only=False))
+model_cae.load_state_dict(torch.load(PAPER_CAE_CHECKPOINT, weights_only=False))
 model_cae.eval()
 
 model_pablos = AE_Pablos1d(nf=16, k=5, use_dropout=True).to(device)
-model_pablos.load_state_dict(torch.load("spectrum_data/pablos_200epochs.pth", weights_only=False))
+model_pablos.load_state_dict(torch.load(PAPER_PSINN_CHECKPOINT, weights_only=False))
 model_pablos.eval()
 
 # ── β computation ───────────────────────────────────────────────────────────
@@ -78,17 +79,17 @@ b_tr_base = compute_beta(model_base,   train_2ch, use_ae=True)
 b_tr_cae  = compute_beta(model_cae,    train_1ch, use_ae=False)
 b_tr_pab  = compute_beta(model_pablos, train_1ch, use_ae=True)
 
-# Psl-CAE2ch, LowCap-CAE1ch, Psl-CAE1ch → upper-tail
+# Psi-NN I/Q ablation, CAE I-only, and paper Psi-NN I-only → upper-tail
 # ConvAE-Baseline2ch → lower-tail
 gamma_psi  = np.mean(b_tr_psi)  + norm.ppf(1 - TARGET_PFA) * np.std(b_tr_psi)
 gamma_base = np.mean(b_tr_base) + norm.ppf(TARGET_PFA)      * np.std(b_tr_base)
 gamma_cae  = np.mean(b_tr_cae)  + norm.ppf(1 - TARGET_PFA) * np.std(b_tr_cae)
 gamma_pab  = np.mean(b_tr_pab)  + norm.ppf(1 - TARGET_PFA) * np.std(b_tr_pab)
 
-print(f"  Psl-CAE2ch  γ (upper) = {gamma_psi:.4f}")
+print(f"  Psi-NN (I/Q ablation) γ (upper) = {gamma_psi:.4f}")
 print(f"  ConvAE-Base γ (lower) = {gamma_base:.4f}")
 print(f"  LowCap-CAE1 γ (upper) = {gamma_cae:.4f}")
-print(f"  Psl-CAE1ch  γ (upper) = {gamma_pab:.4f}")
+print(f"  Psi-NN (I-only) γ (upper) = {gamma_pab:.4f}")
 
 # ── β on test set ────────────────────────────────────────────────────────────
 print("Computing β on test set...")
@@ -101,10 +102,10 @@ b_pab  = compute_beta(model_pablos, test_1ch, use_ae=True)
 fig, axes = plt.subplots(1, 4, figsize=(14, 3.8))
 
 configs = [
-    ("Psl-CAE2ch",         b_psi,  gamma_psi,  "upper-tail"),
+    ("Psi-NN (I/Q ablation)", b_psi, gamma_psi, "upper-tail"),
     ("ConvAE-Baseline2ch", b_base, gamma_base, "lower-tail"),
     ("LowCap-CAE1ch",      b_cae,  gamma_cae,  "upper-tail"),
-    ("Psl-CAE1ch",         b_pab,  gamma_pab,  "upper-tail"),
+    ("Psi-NN (I-only)",    b_pab, gamma_pab, "upper-tail"),
 ]
 
 for ax, (name, beta, gamma, tail) in zip(axes, configs):
@@ -133,10 +134,10 @@ plt.savefig("snr_distributions_all_-6dB.png", dpi=300, bbox_inches='tight')
 plt.close()
 print("Saved snr_distributions_all_-6dB.png")
 
-# 2-panel β histogram: CAE (LowCap-CAE1ch) and PsiNN (Psl-CAE1ch) only
+# 2-panel beta histogram: CAE and the paper's I-only Psi-NN.
 two_model_configs = [
     ("LowCap-CAE1ch (CAE)",   b_cae, gamma_cae, "upper-tail"),
-    ("Psl-CAE1ch (PsiNN)",    b_pab, gamma_pab, "upper-tail"),
+    ("Psi-NN (I-only)",       b_pab, gamma_pab, "upper-tail"),
 ]
 fig2, axes2 = plt.subplots(1, 2, figsize=(8, 3.8))
 for ax, (name, beta, gamma, tail) in zip(axes2, two_model_configs):
@@ -196,7 +197,7 @@ plt.close()
 print("Saved mmse_hist_cae_psinn.png")
 
 # Multi-SNR 2×2 figures: one per SNR value (-6, 0, +6 dB)
-# Rows: β (top), MMSE (bottom)   Columns: LowCap-CAE1ch, Psl-CAE1ch
+# Rows: beta (top), MMSE (bottom); columns: CAE and paper Psi-NN.
 for snr_val in [-6, 0, 6]:
     snr_m = (snrs == snr_val)
     h0_s  = snr_m & (labels == 0)
@@ -216,7 +217,7 @@ for snr_val in [-6, 0, 6]:
 
     for col, (name, beta, gamma) in enumerate([
         ("LowCap-CAE1ch (CAE)",  b_cae, gamma_cae),
-        ("Psl-CAE1ch (PsiNN)",   b_pab, gamma_pab),
+        ("Psi-NN (I-only)",      b_pab, gamma_pab),
     ]):
         # β row
         axes[0, col].hist(beta[h0_s], bins=40, alpha=0.65, color='steelblue',

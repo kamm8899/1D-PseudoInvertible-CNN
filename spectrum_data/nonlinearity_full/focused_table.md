@@ -1,5 +1,10 @@
 # Focused nonlinearity results
 
+> **Superseded for the resubmission:** this sweep used
+> `compare_A_lowcap-original.pth`. The advisor subsequently confirmed
+> `cae_best.pth` as the paper CAE checkpoint. Rerun the nonlinearity sweep
+> before citing these values or figures.
+
 Detection probability (%) averaged across three simulation seeds, with 1,000 signal windows per modulation/SNR/condition per seed. Thresholds are recalibrated using independent noise to target a 1% false-alarm rate. Strong combined compression means TX IBO = 0 dB and RX noise-referenced back-off = 0 dB (Rapp smoothness p = 2).
 
 | Modulation | SNR (dB) | Linear CAE Pd (%) | Linear Psi-NN Pd (%) | Strong combined CAE Pd (%) | Strong combined Psi-NN Pd (%) |
