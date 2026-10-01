@@ -1,4 +1,4 @@
-# Psi-NN spectrum sensing resubmission
+# Psi-NN Spectrum Sensing
 
 This repository contains the corrected experiments for the Psi-NN spectrum
 sensing paper. The paper studies a noise-trained, I-only pseudo-invertible
@@ -8,12 +8,12 @@ energy detection at a target false-alarm probability of 0.01.
 Start with [PROJECT_MAP.md](PROJECT_MAP.md) for a file-by-file guide. The local
 paper files are under [`paper/`](paper/).
 
-## Advisor update: what changed
+## Current implementation
 
 ### 1. Corrected signal generator
 
-`generate_spectrum_dataset.py` is the advisor's corrected generator with the
-project's optional Rapp nonlinearity support retained.
+`generate_spectrum_dataset.py` contains the corrected signal generator with the
+optional Rapp nonlinearity support retained.
 
 - Every modulation now uses one receiver sampling rate selected by `--sps`.
   The default and main-paper value is four samples per symbol.
@@ -23,8 +23,8 @@ project's optional Rapp nonlinearity support retained.
 - Cross 32-QAM uses the symmetric 6-by-6 constellation with the four corners
   removed. This eliminates the earlier constellation-dependent DC bias.
 - `--snr-points` accepts an explicit SNR grid.
-- Training-noise generation is unchanged, so the advisor update does not by
-  itself require retraining the saved neural models.
+- Training-noise generation is unchanged, so the generator corrections do not
+  require retraining the saved neural models.
 
 The main corrected test data use BPSK, QPSK, 16-QAM, and cross 32-QAM; raised-
 cosine roll-off 0.35; random timing; 1024 samples per block; four samples per
@@ -75,7 +75,7 @@ uncertainty**.
 
 ### 4. Canonical checkpoints
 
-The advisor-confirmed paper checkpoints are:
+The canonical paper checkpoints are:
 
 | Paper model | Checkpoint | Result prefix |
 | --- | --- | --- |
@@ -132,7 +132,7 @@ Research_PSNN/
 ```
 
 Active Python modules remain at the repository root when other scripts import
-them or the advisor's commands assume that location. Superseded visual outputs
+them or the documented commands assume that location. Superseded visual outputs
 and unrelated experiments are under `archive/`.
 
 ## Environment
@@ -319,9 +319,9 @@ current checkpoints and all paper detectors under the corrected protocol.
 
 ## Training and reproducibility
 
-The advisor update does not require retraining because training-noise generation
-did not change. The saved paper checkpoints are reused. If additional time is
-available, training Psi-NN and CAE with three to five independent seeds can be
+The generator corrections do not require retraining because training-noise
+generation did not change. The saved paper checkpoints are reused. If additional
+time is available, training Psi-NN and CAE with three to five independent seeds can be
 reported as a later robustness study using the same checkpoint-selection rule.
 
 ## Legacy material

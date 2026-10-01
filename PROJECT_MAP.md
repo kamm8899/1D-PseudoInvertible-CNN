@@ -1,8 +1,8 @@
 # Research_PSNN project map
 
-This repository is organized around the current resubmission workflow. Active
+This repository is organized around the current Psi-NN spectrum-sensing workflow. Active
 Python modules remain at the repository root because they import one another
-and because the advisor's run commands assume that location.
+and because the documented run commands assume that location.
 
 ## Current paper
 
@@ -11,7 +11,7 @@ and because the advisor's run commands assume that location.
   Psi-NN beta histograms at -6 dB.
 - `paper/figures/pd_vs_snr_4sps_8sps.pdf` — Figure 2: stacked 4-sps and 8-sps
   detection curves.
-- `paper/references.bib` — bibliography supplied for the resubmission.
+- `paper/references.bib` — project bibliography.
 
 Regenerate the paper figures from the repository root with:
 

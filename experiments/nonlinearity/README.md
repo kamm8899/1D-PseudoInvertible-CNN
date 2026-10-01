@@ -16,8 +16,8 @@ The default `--model-pair paper` follows `verify_mod_auc_10db.py`:
 | `legacy` | `cae_best.pth` | `psl_cnn_200epochs.pth` | CAE I-only; Psi-NN I/Q |
 | `matched` | `cae_best.pth` | `psl_cnn_200epochs_ch1.pth` | Both I-only |
 
-Checkpoints are under `spectrum_data/`. The advisor confirmed `cae_best.pth` as
-the paper CAE checkpoint on 26 September 2026. Override paths with `--cae-checkpoint` and
+Checkpoints are under `spectrum_data/`. The canonical paper CAE checkpoint is
+`cae_best.pth`. Override paths with `--cae-checkpoint` and
 `--psi-checkpoint`; the architecture must match the selected pair. `CAE` has the
 same parameter structure and forward computation as `LowCapOriginal` in the paper
 verification script. All pairs use joint I/Q per-window mean/std normalization
