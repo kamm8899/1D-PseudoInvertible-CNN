@@ -1,0 +1,22 @@
+test file: spectrum_data/test_data_raw_sps8.pt
+calibration file: spectrum_data/calib_noise_raw.pt
+generation: {'use_pulse_shaping': True, 'snr_uncertainty_db': 2.0, 'samples_per_symbol': 8, 'random_timing': True, 'qam32': 'cross (6x6 minus corners)', 'seed': 42, 'nonlinearity': {'model': 'rapp', 'tx_ibo_db': None, 'rx_backoff_db': None, 'smoothness': 2.0, 'snr_reference': 'post_tx_pre_rx_total_signal_power', 'rx_noise_power_per_component': 1.0}}
+target Pfa: 0.01
+Test-set +/-dB variation: SNR uncertainty with fixed noise floor
+ED uncertainty curve: +/-2 dB noise-power uncertainty
+
+detector             -14     -12     -10      -8      -6      -4   meas.Pfa
+mme_L4             0.276   0.524   0.834   0.972   1.000   1.000   0.0087
+cav_L4             0.310   0.582   0.874   0.983   1.000   1.000   0.0072
+mme_L8             0.359   0.639   0.901   0.991   1.000   1.000   0.0078
+cav_L8             0.377   0.662   0.913   0.994   1.000   1.000   0.0103
+ed                 0.154   0.324   0.585   0.855   0.979   1.000   0.0128
+ed_unc2dB          0.000   0.000   0.000   0.000   0.021   0.142   0.0000
+
+Per-modulation Pd at -14 dB:
+  mme_L4          qpsk=0.168  bpsk=0.600  16qam=0.158  32qam=0.179
+  cav_L4          qpsk=0.194  bpsk=0.656  16qam=0.195  32qam=0.197
+  mme_L8          qpsk=0.233  bpsk=0.731  16qam=0.231  32qam=0.241
+  cav_L8          qpsk=0.251  bpsk=0.743  16qam=0.254  32qam=0.259
+  ed              qpsk=0.086  bpsk=0.334  16qam=0.096  32qam=0.101
+  ed_unc2dB       qpsk=0.000  bpsk=0.000  16qam=0.000  32qam=0.000

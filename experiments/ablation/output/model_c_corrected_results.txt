@@ -1,0 +1,22 @@
+Model C corrected-condition evaluation
+checkpoint: spectrum_data/compare_C_lowcap-symdec.pth
+test: spectrum_data/test_data_advisor_sps4.pt
+calibration: spectrum_data/calib_noise.pt
+parameters: 93,025
+threshold: empirical 0.99 quantile = 0.09907596
+measured test Pfa: 0.011231
+
+SNR (dB), Pd
+-14, 0.072750
+-12, 0.168750
+-10, 0.295750
+-8, 0.519250
+-6, 0.734500
+-4, 0.913500
+-2, 0.974500
+0, 0.996750
+2, 0.999500
+4, 1.000000
+6, 1.000000
+8, 1.000000
+10, 1.000000

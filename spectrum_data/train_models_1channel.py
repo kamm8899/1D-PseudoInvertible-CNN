@@ -95,7 +95,7 @@ def main() -> None:
     torch.save(model_psi.state_dict(), out_psi)
     torch.save(model_base.state_dict(), out_base)
     print(f"\nSaved:\n  {out_psi}\n  {out_base}")
-    print("Run: python spectrum_data/evaluate_channel_ablation.py")
+    print("Run: python experiments/ablation/evaluate_channel_ablation.py")
 
 
 if __name__ == "__main__":

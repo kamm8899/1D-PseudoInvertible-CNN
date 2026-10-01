@@ -10,6 +10,8 @@ from spectrum_paths import get_cae_test_data_path, assert_psinn_full_channel_met
 import torch
 import numpy as np
 from sklearn.metrics import roc_curve, auc
+import matplotlib
+matplotlib.use("Agg")  # Headless backend for terminal and automated sweep runs.
 import matplotlib.pyplot as plt
 from pathlib import Path
 import time
@@ -18,6 +20,11 @@ from cae_spectrum import CAE
 from experiment_labels import PAPER_CAE_CHECKPOINT, ROC_SPECTRUM_CAE, TABLE_SPECTRUM_CAE
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Keep oversampling-sweep artifacts separate from the main 4-sps results.
+# Set SPECTRUM_OUTPUT_TAG=sps2 or sps8 when running the tagged datasets.
+output_tag = os.environ.get("SPECTRUM_OUTPUT_TAG", "").strip()
+output_suffix = f"_{output_tag}" if output_tag else ""
 
 # ====================== LOAD DATA ======================
 _test_path = get_cae_test_data_path()
@@ -80,8 +87,8 @@ beta_cae = compute_beta(model_cae, test_data)
 # Advisor item 2: report test-H0 false alarms and retain paired scores for bootstrap.
 measured_pfa = float(np.mean(beta_cae[test_labels == 0] > gamma))
 print(f"Measured test Pfa = {measured_pfa:.6f} (target {target_pfa})")
-np.save("spectrum_data/scores_calib_cae.npy", beta_calib)
-np.save("spectrum_data/scores_test_cae.npy", beta_cae)
+np.save(f"spectrum_data/scores_calib_cae{output_suffix}.npy", beta_calib)
+np.save(f"spectrum_data/scores_test_cae{output_suffix}.npy", beta_cae)
 
 
 # ROC / AUC — higher β = more like signal (same orientation as evaluate_anomaly_inverted.py)
@@ -102,12 +109,12 @@ print(f"\n=== YOUDEN INDEX (Optimal Pfa) ===")
 print(f"{TABLE_SPECTRUM_CAE}  optimal Pfa = {optimal_pfa:.4f}  TPR = {optimal_tpr:.4f}  Youden = {youden_cae[best_idx]:.4f}")
 
 # ====================== OUTPUT FOLDER ======================
-out_dir = Path("anomalies_CAE")
+out_dir = Path(f"anomalies_CAE{output_suffix}")
 out_dir.mkdir(exist_ok=True)
 for f in out_dir.glob("*.png"):
     f.unlink()
 
-with open("spectrum_data/evaluation_results_cae.txt", "w") as f:
+with open(f"spectrum_data/evaluation_results_cae{output_suffix}.txt", "w") as f:
     f.write(
         f"=== EVALUATION RESULTS — {TABLE_SPECTRUM_CAE} (β, upper-tail γ; same tail convention as inverted Psl-CNN) ===\n"
     )
@@ -174,7 +181,7 @@ target_pfa = 0.05
 gamma = np.quantile(beta_calib, 1 - target_pfa)
 measured_pfa_05 = float(np.mean(beta_cae[test_labels == 0] > gamma))
 print(f"Measured test Pfa = {measured_pfa_05:.6f} (target {target_pfa})")
-with open("spectrum_data/evaluation_results_cae.txt", "a") as f:
+with open(f"spectrum_data/evaluation_results_cae{output_suffix}.txt", "a") as f:
     f.write(f"Measured test Pfa: {measured_pfa_05:.6f} (target {target_pfa}); gamma={gamma:.8g}\n")
 print(f"\nTarget P_fa = {target_pfa} → γ = {gamma:.4f}")
 
@@ -328,9 +335,9 @@ for snr_db in snr_points:
 
 print(f"{'─'*45}")
 
-np.save("spectrum_data/pd_vs_snr_cae.npy", np.array(pd_cae_arr))
-np.save("spectrum_data/snr_points.npy", snr_points)
-print("Saved pd_vs_snr_cae.npy")
+np.save(f"spectrum_data/pd_vs_snr_cae{output_suffix}.npy", np.array(pd_cae_arr))
+np.save(f"spectrum_data/snr_points{output_suffix}.npy", snr_points)
+print(f"Saved pd_vs_snr_cae{output_suffix}.npy")
 
 # ====================== AUC PER MODULATION × SNR TABLE ======================
 modulations_list = ['qpsk', 'bpsk', '16qam', '32qam']

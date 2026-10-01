@@ -23,6 +23,8 @@ from experiment_labels import PAPER_PSINN_CHECKPOINT, ROC_PABLOS_STYLE, TABLE_PA
 
 from spectrum_paths import get_psinn_test_data_path, assert_psinn_full_channel_metadata
 from sklearn.metrics import roc_curve, auc
+import matplotlib
+matplotlib.use("Agg")  # Headless backend for terminal and automated sweep runs.
 import matplotlib.pyplot as plt
 from pathlib import Path
 import time
@@ -30,6 +32,12 @@ import time
 from psinn_layer_1d_pablos import AE_Pablos1d
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Oversampling sweeps set SPECTRUM_OUTPUT_TAG (for example, ``sps2`` or
+# ``sps8``) so their scores, curves, reports, and plots cannot overwrite the
+# main 4-samples/symbol paper evaluation.
+output_tag = os.environ.get("SPECTRUM_OUTPUT_TAG", "").strip()
+output_suffix = f"_{output_tag}" if output_tag else ""
 
 # ====================== LOAD DATA (I channel only) ======================
 _psinn_test_path = get_psinn_test_data_path()
@@ -84,8 +92,8 @@ beta = compute_beta(model, test_data)
 # Advisor item 2: report test-H0 false alarms and retain paired scores for bootstrap.
 measured_pfa = float(np.mean(beta[test_labels == 0] > gamma))
 print(f"Measured test Pfa = {measured_pfa:.6f} (target {target_pfa})")
-np.save("spectrum_data/scores_calib_psinn.npy", beta_calib)
-np.save("spectrum_data/scores_test_psinn.npy", beta)
+np.save(f"spectrum_data/scores_calib_psinn{output_suffix}.npy", beta_calib)
+np.save(f"spectrum_data/scores_test_psinn{output_suffix}.npy", beta)
 
 
 fpr, tpr, _ = roc_curve(test_labels, beta)
@@ -97,12 +105,12 @@ print(f"\n{TABLE_PABLOS_STYLE} AUC:          {auc_score:.4f}")
 print(f"Youden optimal Pfa:  {fpr[best_idx]:.4f}  TPR = {tpr[best_idx]:.4f}")
 
 # ====================== SAVE RESULTS ======================
-out_dir = Path("anomalies_Pablos")
+out_dir = Path(f"anomalies_Pablos{output_suffix}")
 out_dir.mkdir(exist_ok=True)
 for f in out_dir.glob("*.png"):
     f.unlink()
 
-with open("spectrum_data/evaluation_results_pablos.txt", "w") as f:
+with open(f"spectrum_data/evaluation_results_pablos{output_suffix}.txt", "w") as f:
     f.write(f"=== {TABLE_PABLOS_STYLE} (`AE_Pablos1d`) — evaluation ===\n")
     f.write(f"Calibration: spectrum_data/calib_noise.pt; empirical quantile\n")
     f.write(f"Measured test Pfa: {measured_pfa:.6f} (target {target_pfa})\n")
@@ -242,7 +250,7 @@ for snr_db in snr_points:
     print(f"{snr_db:>10g}  {pd_val:>12.4f}")
 
 print(f"{'─'*40}")
-np.save("spectrum_data/pd_vs_snr_pablos.npy", np.array(pd_arr))
-np.save("spectrum_data/snr_points.npy", snr_points)
-print("Saved spectrum_data/pd_vs_snr_pablos.npy")
+np.save(f"spectrum_data/pd_vs_snr_pablos{output_suffix}.npy", np.array(pd_arr))
+np.save(f"spectrum_data/snr_points{output_suffix}.npy", snr_points)
+print(f"Saved spectrum_data/pd_vs_snr_pablos{output_suffix}.npy")
 print("✅ Evaluation complete!")

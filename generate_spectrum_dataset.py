@@ -17,7 +17,7 @@ import numpy as np
 from pathlib import Path
 from scipy.signal import lfilter
 # Reviewer (c): hardware nonlinearity helpers; None settings retain the linear channel.
-from rf_nonlinearity import transmitter, receiver
+from experiments.nonlinearity.rf_nonlinearity import transmitter, receiver
 
 def _actual_snr_db(nominal_snr_db: float, uncertainty_db: float) -> float:
     """Draw SNR uniformly in [nominal-u, nominal+u] with a fixed noise floor."""
@@ -324,7 +324,9 @@ if __name__ == "__main__":
     print("Dataset generation complete!")
     print(f"   Training samples : {train_noise.shape}  (pure noise only)")
     print(f"   Test samples     : {test_data.shape}  ({n_signal} signal, {n_noise} noise)")
-    print(f"   Per (mod, SNR)   : {args.samples_per_cell} signal samples at each of 11 SNR x 4 modulation cells")
+    # Report the actual requested grid size; the previous hard-coded "11 SNR"
+    # was misleading for focused sweeps that contain only the -10 dB point.
+    print(f"   Per (mod, SNR)   : {args.samples_per_cell} signal samples at each of {len(args.snr_points)} SNR x 4 modulation cells")
     print(f"   Saved            : {test_norm_path} , {test_raw_path}")
     print("   CAE eval         : defaults to test_data_full.pt (set SPECTRUM_TEST_DATA_CAE for ablations)")
     print("   PsiNN/Pablos/ED  : require test_data_full.pt / test_data_raw_full.pt (see spectrum_paths.py)")

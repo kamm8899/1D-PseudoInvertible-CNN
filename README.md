@@ -1,244 +1,343 @@
-# Modulation-Agnostic Spectrum Sensing — Anomaly Detection
+# Psi-NN spectrum sensing resubmission
 
-Research code for **1D pseudo-invertible** and **baseline** convolutional autoencoders on synthetic I/Q data, following the **β statistic** and **Neyman–Pearson** style calibration from:
+This repository contains the corrected experiments for the Psi-NN spectrum
+sensing paper. The paper studies a noise-trained, I-only pseudo-invertible
+convolutional autoencoder and compares it with the Pablos CAE, CAV, MME, and
+energy detection at a target false-alarm probability of 0.01.
 
-> Pablos et al. (2022). *Modulation-agnostic spectrum sensing using deep learning.* ICT Express.  
-> https://www.sciencedirect.com/science/article/pii/S2405959522000480
+Start with [PROJECT_MAP.md](PROJECT_MAP.md) for a file-by-file guide. The local
+paper files are under [`paper/`](paper/).
 
----
+## Advisor update: what changed
 
-## Overview
+### 1. Corrected signal generator
 
-- **Goal:** Detect primary-user–like **modulated signals** vs **AWGN-only** segments using models trained **only on noise** (unsupervised anomaly detection).
-- **Input:** Batches of shape `(N, C, 1024)` with `C ∈ {1, 2}` depending on the experiment (I-only vs I/Q).
-- **Score:** Per-sample **coefficient of determination β** from autoencoder reconstruction (same spirit as Pablos et al., Eq. (5)).
-- **Threshold:** Scalar **γ** from mean and std of β on **training noise** at a nominal **\(P_{\mathrm{fa}}\)** (e.g. 0.01 and 0.05 in scripts).
+`generate_spectrum_dataset.py` is the advisor's corrected generator with the
+project's optional Rapp nonlinearity support retained.
 
-**Models compared in this repo**
+- Every modulation now uses one receiver sampling rate selected by `--sps`.
+  The default and main-paper value is four samples per symbol.
+- Blocks use a random symbol-timing offset. `--no-random-timing` restores the
+  earlier aligned behavior for a controlled ablation.
+- Raised-cosine start-up transients are discarded before blocks are selected.
+- Cross 32-QAM uses the symmetric 6-by-6 constellation with the four corners
+  removed. This eliminates the earlier constellation-dependent DC bias.
+- `--snr-points` accepts an explicit SNR grid.
+- Training-noise generation is unchanged, so the advisor update does not by
+  itself require retraining the saved neural models.
 
-| Name in docs / `experiment_labels.py` | Code | Role |
-|----------------------------------------|------|------|
-| **Psi-NN (I/Q ablation)** | `AE_Classifier1d` (`psinn_layer_1d.py`) | Separate two-channel experiment; encoder and decoder share weights via **`PsiNNConv1d`**. |
-| **Conv AE baseline** | `AE_Baseline_Classifier1d` | Separate **`Conv1d`** encoder and **`ConvTranspose1d`** decoder; optional small **`C5`** classifier head (reconstruction path `AE()` used for sensing). |
-| **CAE1ch - LowCap** | `CAE` (`cae_spectrum.py`) | 1×1024 I-only slice; **upsample + conv** decoder; plots use this display name (`experiment_labels.py`). |
-| **Psi-NN (I-only)** | `AE_Pablos1d` (`psinn_layer_1d_pablos.py`) | Main paper Psi-NN; single-channel stack evaluated by `evaluate_pablos.py`. |
+The main corrected test data use BPSK, QPSK, 16-QAM, and cross 32-QAM; raised-
+cosine roll-off 0.35; random timing; 1024 samples per block; four samples per
+symbol; and a uniform +/-2 dB SNR spread around each nominal SNR with a fixed
+noise floor.
 
-**Important:** The **`CAE` class** in code is the spectrum autoencoder; figures label it **CAE1ch - LowCap**. The conv AE baseline is a different architecture; the distinction is **architecture + parameter tying**, not “CAE vs non-CAE” in the taxonomy sense.
+### 2. Held-out empirical thresholds
 
-**Main inverted evaluation (`evaluate_anomaly_inverted.py`)** uses a **mixed-tail** convention (same nominal \(P_{\mathrm{fa}}\), different inequality):
+Paper-facing thresholds no longer use a Gaussian fit to training-noise scores.
+For an upper-tail detector, the threshold is
 
-- **Psi-NN I/Q ablation:** **upper tail** on H₀ — \(P_{\mathrm{fa}} = P(\beta > \gamma \mid H_0)\), ROC on **+β**, \(P_d = P(\beta > \gamma \mid H_1)\).
-- **Conv AE baseline:** **lower tail** on H₀ — \(P_{\mathrm{fa}} = P(\beta < \gamma \mid H_0)\), ROC on **−β**, \(P_d = P(\beta < \gamma \mid H_1)\).
+```python
+gamma = np.quantile(beta_calib, 1 - pfa)
+```
 
-Other scripts (spectrum CAE, Pablos, forward PsiNN) document their own tail / ROC orientation in-file.
+where `beta_calib` comes from independent held-out calibration noise. Every
+detector reports its measured test false-alarm probability. The calibration
+files are:
 
----
+- `spectrum_data/calib_noise.pt` for normalized neural inputs;
+- `spectrum_data/calib_noise_raw.pt` for raw-domain calculations.
+
+The current paper evaluators using this protocol are:
+
+- `evaluate_pablos.py`;
+- `spectrum_data/evaluate_anomalies_cae.py`;
+- `evaluate_baselines.py`;
+- `verify_mod_auc_10db.py`;
+- `experiments/ablation/evaluate_model_c.py`;
+- `experiments/nonlinearity/evaluate_nonlinearity.py`.
+
+### 3. Classical baselines
+
+`evaluate_baselines.py` evaluates the following detectors on the same I-channel
+data used by the neural models:
+
+- CAV with lag dimensions 4 and 8;
+- MME with lag dimensions 4 and 8;
+- energy detection with known noise variance;
+- energy detection with a threshold designed for +/-2 dB noise-power
+  uncertainty.
+
+CAV and MME use normalized I-channel blocks. Energy detection uses raw I-channel
+blocks because received energy is its statistic. The +/-2 dB variation applied
+to signal-present test blocks is **SNR uncertainty** with a fixed noise floor.
+Only the special uncertainty-aware energy detector models **noise-power
+uncertainty**.
+
+### 4. Canonical checkpoints
+
+The advisor-confirmed paper checkpoints are:
+
+| Paper model | Checkpoint | Result prefix |
+| --- | --- | --- |
+| Psi-NN, I-only | `spectrum_data/pablos_200epochs.pth` | `pd_vs_snr_pablos` |
+| Pablos CAE | `spectrum_data/cae_best.pth` | `pd_vs_snr_cae` |
+
+The file `experiments/ablation/output/compare_A_lowcap-original.pth` is an
+architecture-ablation checkpoint and must not be used as the paper CAE.
+
+### 5. Model naming
+
+The paper's Psi-NN is the I-only `AE_Pablos1d` model evaluated by
+`evaluate_pablos.py`. Files named `pd_vs_snr_psinn.npy` belong to the older
+two-channel I/Q ablation and are not the main paper curve.
+
+### 6. Terminology
+
+- Use **SNR uncertainty** for the per-block +/-2 dB SNR variation with fixed
+  noise power.
+- Use **noise-power uncertainty** only for the uncertainty-aware energy
+  detector.
+- Use **measured false-alarm probability** when reporting the operating point.
 
 ## Repository layout
 
-```
+```text
 Research_PSNN/
-├── psinn_layer_1d.py           # PsiNNConv1d, AE_Classifier1d (I/Q ablation), AE_Baseline_Classifier1d
-├── psinn_layer_1d_pablos.py    # AE_Pablos1d (Pablos-style I-only)
-├── cae_spectrum.py             # Spectrum CAE class + optional __main__ training
-├── spectrum_paths.py           # Test tensor paths, full-channel metadata checks, env overrides
-├── experiment_labels.py      # Consistent plot/log names (combined Pd figure, etc.)
+├── README.md
+├── PROJECT_MAP.md
+├── paper/
+│   ├── manuscript.tex
+│   ├── references.bib
+│   └── figures/
+├── experiments/
+│   ├── ablation/
+│   │   ├── README.md
+│   │   ├── evaluate_model_c.py
+│   │   └── output/
+│   └── nonlinearity/
+│       ├── README.md
+│       ├── rf_nonlinearity.py
+│       ├── evaluate_nonlinearity.py
+│       ├── test_nonlinearity.py
+│       └── output/
+├── spectrum_data/              # Current datasets, checkpoints, and scores
+├── archive/                    # Superseded code, figures, and evaluator plots
 ├── generate_spectrum_dataset.py
-├── train_models.py             # Train 2-ch Psi-NN ablation + conv AE baseline (200 epochs, k=5)
-├── train_pablos.py             # Train the paper's I-only Psi-NN weights
-├── evaluate_anomaly_inverted.py    # Primary full eval: 2-ch, mixed tails, Pd vs SNR, plots
+├── make_calibration_noise.py
 ├── evaluate_pablos.py
-├── energy_detector.py          # ED benchmark → spectrum_data/pd_vs_snr_ed.npy
-├── plot_pd_vs_snr.py           # Combined Pd vs SNR figure (loads *.npy from other scripts)
-├── load_data.py
-├── diagnostic_recon_error.py
-├── run_cae_ablation_report.py  # Summarize CAE evals across test-channel variants
-│
-├── spectrum_data/
-│   ├── train_noise.pt / train_noise_raw.pt   # Normalized vs raw training noise
-│   ├── test_data_full.pt / test_data_raw_full.pt   # Required default for PsiNN / Pablos / ED / CAE
-│   ├── psl_cnn_*epochs.pth, baseline_*epochs.pth
-│   ├── pablos_200epochs.pth, cae_best.pth (if trained)
-│   ├── evaluate_anomalies_forward.py   # Forward PsiNN (100-epoch ckpts, k=3)
-│   ├── evaluate_anomalies_cae.py       # Spectrum CAE eval
-│   ├── train_models_1channel.py        # Train 1-ch Psl-CNN + baseline
-│   ├── evaluate_channel_ablation.py    # 1ch vs 2ch table + figures → channel_ablation_results*.csv/png
-│   └── pd_vs_snr_*.npy, snr_points.npy, evaluation_results*.txt
-│
-├── anomalies_Psi-NN_inverted/      # Plots from evaluate_anomaly_inverted.py
-├── anomalies_PSi-NN_forward/
-├── anomalies_CAE/
-├── anomalies_Pablos/
-├── ItalyPowerDemandTest/           # Separate toy demo (not required for spectrum pipeline)
-└── Old Version/                    # Legacy 2D PsiNN reference
+├── evaluate_baselines.py
+├── bootstrap_ci.py
+├── plot_beta_pdf_minus6db.py
+└── plot_sps_comparison.py
 ```
 
-The advisor-confirmed paper checkpoints are `spectrum_data/cae_best.pth` for CAE
-and `spectrum_data/pablos_200epochs.pth` for Psi-NN. The similarly shaped
-`compare_A_lowcap-original.pth` checkpoint belongs only to the architecture
-ablation and is not used for paper-facing comparisons.
+Active Python modules remain at the repository root when other scripts import
+them or the advisor's commands assume that location. Superseded visual outputs
+and unrelated experiments are under `archive/`.
 
-There is **no** `evaluate_anomaly.py` or `evaluate_anomalies_forward_cae.py` in the tree anymore; use the scripts listed above.
+## Environment
 
----
-
-## Dependencies
+The existing virtual environment can be used from the repository root:
 
 ```bash
-pip install torch numpy scipy scikit-learn matplotlib
+cd /Users/lux/Desktop/Research_PSNN
+.venv/bin/python --version
 ```
 
-**macOS:** If you see `OMP: Error #15` / duplicate `libomp`, set before importing PyTorch/NumPy:
+Required Python packages include PyTorch, NumPy, SciPy, scikit-learn, and
+Matplotlib.
+
+## Main four-sample experiment
+
+### Step 1: calibration noise
 
 ```bash
-export KMP_DUPLICATE_LIB_OK=TRUE
+.venv/bin/python make_calibration_noise.py
 ```
 
-Training scripts in `spectrum_data/` set this internally **before** `import torch`.
+This creates 10,000 held-out noise blocks using a seed independent of training
+and testing.
 
----
-
-## Data generation
-
-Default **PsiNN / Pablos / energy detector / CAE (default path)** expect the **full** test channel: **pulse shaping** and **SNR uncertainty** in the saved metadata (`spectrum_paths.assert_psinn_full_channel_metadata`).
-
-Generate the canonical files:
+### Step 2: corrected test data
 
 ```bash
-python generate_spectrum_dataset.py --tag full --snr-uncertainty-db 2
+.venv/bin/python generate_spectrum_dataset.py \
+  --tag advisor_sps4 \
+  --snr-uncertainty-db 2 \
+  --sps 4 \
+  --samples-per-cell 1000 \
+  --noise-per-snr 1000 \
+  --snr-points -14 -12 -10 -8 -6 -4 -2 0 2 4 6 8 10 \
+  --skip-training-save
 ```
 
-This writes (among others):
+Outputs:
 
-- `spectrum_data/train_noise.pt`, `train_noise_raw.pt`
-- `spectrum_data/test_data_full.pt`, `test_data_raw_full.pt`
+- `spectrum_data/test_data_advisor_sps4.pt`;
+- `spectrum_data/test_data_raw_advisor_sps4.pt`.
 
-**Flags:** `--no-pulse-shaping`, `--tag <name>` for ablation copies (`test_data_<tag>.pt`). See `spectrum_paths.py` for **`SPECTRUM_TEST_DATA_*`** overrides.
+The saved test set contains 1,000 signal blocks per modulation and SNR and
+1,000 noise blocks per SNR index.
 
-**Note:** `spectrum_data/evaluate_anomalies_cae.py` feeds the spectrum **`CAE`** with the **in-phase slice** of the normalized packed tensors, `[:, 0:1, :]` (1×1024), while inverted PsiNN uses full **2×1024** normalized I/Q. The CAE script’s local variable `test_data_raw` is misleading: its default path is `test_data_full.pt`.
-
----
-
-## Training
-
-| Script | Output (examples) |
-|--------|---------------------|
-| `python train_models.py` | `spectrum_data/psl_cnn_200epochs.pth`, `baseline_200epochs.pth` — **2 ch**, **k=5**, matches `evaluate_anomaly_inverted.py`. |
-| `python spectrum_data/train_models_1channel.py --epochs 200` | `psl_cnn_200epochs_ch1.pth`, `baseline_200epochs_ch1.pth` for **I-only** ablation. |
-| `python train_pablos.py` | Weights for `evaluate_pablos.py` (e.g. `pablos_200epochs.pth`). |
-| `python cae_spectrum.py` | Can train / save spectrum CAE checkpoints (see file `__main__`). |
-
-**Forward** evaluation (`spectrum_data/evaluate_anomalies_forward.py`) loads **`psl_cnn_100epochs.pth`** / **`baseline_100epochs.pth`** with **k=3** — not the same checkpoint as the inverted 200-epoch run unless you align them.
-
----
-
-## Evaluation (quick reference)
-
-| Script | Purpose |
-|--------|---------|
-| `evaluate_anomaly_inverted.py` | Separate **2-ch Psi-NN I/Q ablation** + conv AE baseline: ROC, AUC, Youden, TPR tables, β/MSE plots, **Pd vs SNR** → `spectrum_data/pd_vs_snr_psinn.npy`, `pd_vs_snr_baseline.npy`, `snr_points.npy`. |
-| `spectrum_data/evaluate_anomalies_forward.py` | Same scoring family, **100-epoch / k=3** checkpoints. |
-| `spectrum_data/evaluate_anomalies_cae.py` | **Spectrum `CAE`**, upper-tail γ, **+β** ROC → `pd_vs_snr_cae.npy`. |
-| `evaluate_pablos.py` | Main paper **Psi-NN (I-only)** → `pd_vs_snr_pablos.npy`. |
-| `energy_detector.py` | Raw-domain energy → `pd_vs_snr_ed.npy`. |
-| `spectrum_data/evaluate_channel_ablation.py` | Side-by-side **1ch vs 2ch** for Psl-CNN + baseline (same mixed-tail rule as inverted). |
-| `plot_pd_vs_snr.py` | Reads the `pd_vs_snr_*.npy` files and saves **`pd_vs_snr_combined.png`** at repo root. |
-
-Run **after** the corresponding training and eval steps so all `.npy` files exist (ED line optional in `plot_pd_vs_snr.py`).
-
----
-
-## β and γ (short)
-
-\[
-\beta = 1 - \frac{\mathrm{SSE}}{\mathrm{SST}}
-\]
-
-with SSE/SST computed over **all** time and channel dimensions in the batch (see `compute_beta` in each eval script).
-
-**γ** is set from **training-noise** β statistics and `scipy.stats.norm.ppf` at the chosen **\(P_{\mathrm{fa}}\)**. The **inequality** used for “signal” vs ROC sign of β depends on the script (see **Overview** for inverted mixed tails).
-
----
-
-## Human-readable names (`experiment_labels.py`)
-
-Plot legends and log strings are centralized in **`experiment_labels.py`**. The main paper model is **Psi-NN (I-only)**; the two-channel result is labeled **Psi-NN (I/Q ablation)**.
-
----
-
-## Optional / legacy
-
-- **`ItalyPowerDemandTest/`** — small **univariate** toy dataset for layer smoke tests; not the spectrum pipeline.
-- **`Old Version/psinn_layer_and_autoencoder.py`** — 2D PsiNN reference only.
-
----
-
-## License / attribution
-
-Copyright notice appears in `psinn_layer_1d.py` (Jessica Kamman / Jessica Sinn). Cite Pablos et al. (2022) when using the β / NP methodology in publications.
-
-## Hardware nonlinearity robustness (reviewer comment c)
-
-See [NONLINEARITY.md](NONLINEARITY.md) for the Rapp transmitter/receiver model, paired experiment, checkpoint choices, SNR convention, and statistical reporting. Start the transmitter sweep with:
+### Step 3: paper neural models
 
 ```bash
-.venv/bin/python evaluate_nonlinearity.py --output spectrum_data/nonlinearity_tx
+SPECTRUM_TEST_DATA_PSINN=spectrum_data/test_data_advisor_sps4.pt \
+  .venv/bin/python evaluate_pablos.py
+
+SPECTRUM_TEST_DATA_CAE=spectrum_data/test_data_advisor_sps4.pt \
+  .venv/bin/python spectrum_data/evaluate_anomalies_cae.py
 ```
 
-The default compares the I-only paper models identified in `verify_mod_auc_10db.py`, without retraining. Outputs include per-modulation Pd, measured Pfa, ROC AUC, paired confidence intervals, and figures. Receiver and combined sweeps are optional. Existing experiment files are preserved.
+These commands save per-block calibration and test scores for subsequent
+confidence intervals and figures.
 
-## Advisor item 2: held-out empirical thresholds
-
-`evaluate_pablos.py`, `spectrum_data/evaluate_anomalies_cae.py`, and
-`verify_mod_auc_10db.py` now calibrate on `spectrum_data/calib_noise.pt`
-(normalized joint I/Q, then I-only slice), not training noise. Their upper-tail
-threshold is `np.quantile(beta_calib, 1 - target_pfa)` with NumPy default
-interpolation. Measured Pfa is the fraction of independent test H0 scores above
-that threshold. CAE reports both its 0.01 and 0.05 operating points; CAE and Pablos
-also record measured Pfa in their existing results text files. TPR tables use the
-calibrated threshold rather than selecting a point from the test ROC.
-
-The main paper evaluators save `scores_calib_psinn.npy`, `scores_test_psinn.npy`,
-`scores_calib_cae.npy`, and `scores_test_cae.npy` under `spectrum_data/` for
-`bootstrap_ci.py`. Test scores retain test-file order. Here `psinn` means the
-I-only Pablos-style paper model. The verification script does not overwrite these
-score files because it currently uses a different CAE checkpoint.
-
-`evaluate_nonlinearity.py` continues to use independent simulated calibration
-noise per seed, with receiver distortion applied before normalization when
-recalibrating. It now uses the same default quantile interpolation and continues
-to report measured Pfa and intervals in `metrics.csv`. Older two-channel/forward
-and energy-detector scripts retain their previous calibration unless separately
-updated. Existing saved results are not retroactively changed; rerun evaluators
-to obtain results with the new thresholds.
-
-## Advisor item 3: classical baselines on corrected data
-
-The corrected 4-samples/symbol dataset is saved separately as
-`test_data_advisor_sps4.pt` / `test_data_raw_advisor_sps4.pt` under `spectrum_data/`.
-It contains 1,000 signal windows per modulation/SNR and 1,000 noise windows per
-SNR, at -14 through +10 dB in 2 dB steps. It uses random timing, steady-state
-filter output, symmetric cross 32-QAM, and ±2 dB SNR uncertainty.
+### Step 4: classical baselines
 
 ```bash
 .venv/bin/python evaluate_baselines.py \
-  --test spectrum_data/test_data_raw_advisor_sps4.pt --tag advisor_sps4 \
-  --L 4 8 --noise-unc-db 2 --save-scores
+  --test spectrum_data/test_data_raw_advisor_sps4.pt \
+  --tag advisor_sps4 \
+  --L 4 8 \
+  --noise-unc-db 2 \
+  --save-scores
 ```
 
-All six detectors use held-out `calib_noise_raw.pt`. MME/CAV use normalized I;
-ED uses raw I to preserve energy information. Thresholds are detector-specific
-99th percentiles. The uncertainty ED scales its threshold by `10**(2/10)` and is
-then evaluated at nominal noise power, so its measured Pfa can be below 0.01.
-The test-set variation is **SNR uncertainty with a fixed noise floor**; only the
-special uncertainty-ED curve models **noise-power uncertainty**.
-Results are `baselines_results_advisor_sps4.txt` and `.csv`; scores and Pd arrays
-carry the same `_advisor_sps4` suffix. No neural-model comparison is implied until
-those models are evaluated on the same corrected test set.
+### Step 5: paper figures
 
-For subsequent paper-model runs, point `SPECTRUM_TEST_DATA_PSINN` and
-`SPECTRUM_TEST_DATA_CAE` to `spectrum_data/test_data_advisor_sps4.pt`.
-For bootstrap comparisons use `--test spectrum_data/test_data_raw_advisor_sps4.pt`
-and the tagged baseline score filenames, e.g. `scores_calib_cav_L4_advisor_sps4.npy`
-and `scores_test_cav_L4_advisor_sps4.npy`. The paper evaluators currently save
-untagged score files: use only scores from the corresponding corrected-data run.
+```bash
+.venv/bin/python plot_beta_pdf_minus6db.py
+.venv/bin/python plot_sps_comparison.py
+```
+
+The scripts save current PNG and PDF files under `paper/figures/`:
+
+- `beta_pdf_minus6db.*` — stacked empirical CAE and Psi-NN beta histograms at
+  -6 dB, without KDE smoothing;
+- `pd_vs_snr_4sps_8sps.*` — stacked 4-sps and 8-sps detection curves.
+
+### Step 6: bootstrap confidence intervals
+
+```bash
+.venv/bin/python bootstrap_ci.py \
+  --a-calib spectrum_data/scores_calib_psinn.npy \
+  --a-test spectrum_data/scores_test_psinn.npy \
+  --b-calib spectrum_data/scores_calib_cav_L4_advisor_sps4.npy \
+  --b-test spectrum_data/scores_test_cav_L4_advisor_sps4.npy \
+  --names Psi-NN CAV
+```
+
+The current report is
+`spectrum_data/bootstrap_ci_psinn_vs_cav_advisor_sps4.txt`.
+
+## Oversampling sweep
+
+The oversampling study repeats dataset generation and model/baseline evaluation
+at two and eight samples per symbol. Use tags `sps2` and `sps8`, and point the
+neural evaluators to the corresponding normalized test files. Baselines use the
+matching raw files.
+
+The paper reports detection probability at -10 dB:
+
+| Detector | 2 sps | 4 sps | 8 sps |
+| --- | ---: | ---: | ---: |
+| Psi-NN | 0.302 | 0.798 | 0.937 |
+| Pablos CAE | 0.086 | 0.396 | 0.818 |
+| CAV | 0.425 | 0.769 | 0.914 |
+| MME | 0.434 | 0.721 | 0.901 |
+| ED, known noise variance | 0.609 | 0.592 | 0.585 |
+| ED, +/-2 dB noise uncertainty | 0.000 | 0.000 | 0.000 |
+
+The source table is `spectrum_data/oversampling_sweep_minus10db.md`.
+
+## Current main results
+
+At four samples per symbol and a target false-alarm probability of 0.01:
+
+| Detector | -14 dB | -12 dB | -10 dB | -8 dB |
+| --- | ---: | ---: | ---: | ---: |
+| Psi-NN | 0.289 | 0.549 | 0.798 | 0.966 |
+| CAV, L=4 | 0.219 | 0.487 | 0.769 | 0.960 |
+| MME, L=4 | 0.188 | 0.440 | 0.721 | 0.943 |
+| ED, known noise variance | 0.150 | 0.333 | 0.592 | 0.847 |
+| Pablos CAE | 0.109 | 0.231 | 0.396 | 0.632 |
+| ED, +/-2 dB noise uncertainty | 0.000 | 0.000 | 0.000 | 0.000 |
+
+Psi-NN minus CAV bootstrap results:
+
+| SNR | Difference | 95% interval |
+| --- | ---: | ---: |
+| -14 dB | 0.070 | [0.044, 0.094] |
+| -12 dB | 0.062 | [0.033, 0.090] |
+| -10 dB | 0.030 | [0.007, 0.050] |
+| -8 dB | 0.006 | [-0.002, 0.013] |
+
+## Decoder ablation
+
+All ablation code, checkpoints, and outputs are under
+[`experiments/ablation/`](experiments/ablation/). The current paper comparison
+uses Model C, which has the same encoder dimensions as Psi-NN and an independently
+trained symmetric decoder.
+
+```bash
+.venv/bin/python experiments/ablation/evaluate_model_c.py
+```
+
+Corrected Model C detection probabilities are 0.073, 0.169, 0.296, and 0.519
+at -14, -12, -10, and -8 dB, respectively. Its measured false-alarm probability
+is 0.0112. The report is
+`experiments/ablation/output/model_c_corrected_results.txt`.
+
+## Complexity
+
+Run:
+
+```bash
+.venv/bin/python compute_complexity.py
+```
+
+Verified deployment-oriented counts:
+
+- Psi-NN convolutional reconstruction: 13,102,160 MACs per block, assuming
+  pseudoinverse matrices are cached after training;
+- CAV lag products: approximately 4,090 for L=4 and 8,164 for L=8.
+
+The report is `spectrum_data/complexity_verification.md`.
+
+## Nonlinearity experiment
+
+All nonlinearity code, documentation, tests, and saved outputs are under
+[`experiments/nonlinearity/`](experiments/nonlinearity/).
+
+The existing `output/nonlinearity_full/` sweep is retained for provenance but
+is **superseded**: it used `compare_A_lowcap-original.pth`, omitted the classical
+baselines, and did not include the new -14 and -12 dB points. Do not cite those
+numbers as current paper results.
+
+The paper should include a nonlinearity subsection only after rerunning the
+current checkpoints and all paper detectors under the corrected protocol.
+
+## Training and reproducibility
+
+The advisor update does not require retraining because training-noise generation
+did not change. The saved paper checkpoints are reused. If additional time is
+available, training Psi-NN and CAE with three to five independent seeds can be
+reported as a later robustness study using the same checkpoint-selection rule.
+
+## Legacy material
+
+The `archive/` directory contains older figures, evaluator plots, code, LaTeX
+fragments, and the unrelated ItalyPowerDemand example. Nothing under `archive/`
+is required to reproduce the current paper results.
+
+## Validation
+
+Run the nonlinearity unit tests with:
+
+```bash
+.venv/bin/python -m unittest experiments.nonlinearity.test_nonlinearity -v
+```
+
+The suite checks Rapp saturation, phase preservation, transmitter/receiver
+ordering, paired data generation, normalization, parameter validation, and
+confidence-interval helpers.
